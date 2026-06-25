@@ -1,47 +1,31 @@
-// src/services/reportesService.js
+// services/reportesService.js
+const API_URL = "http://localhost:5000/api/reportes"; // Ajusta tu puerto si es necesario
 
-const BASE_URL = 'http://localhost:5000/api/reportes';
+export const fetchResumenReportes = async (fechaInicio = "", fechaFin = "") => {
+  try {
+    const token = localStorage.getItem("token");
+    
+    // Construir la URL con parámetros de consulta si existen fechas
+    let url = `${API_URL}/resumen`;
+    if (fechaInicio && fechaFin) {
+      url += `?fecha_inicio=${fechaInicio}&fecha_fin=${fechaFin}`;
+    }
 
-const getHeaders = () => {
-  const token = localStorage.getItem('token');
-  return {
-    'Content-Type': 'application/json',
-    'Authorization': token ? `Bearer ${token}` : ''
-  };
-};
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json"
+      }
+    });
 
-// 1. Resumen general para las tarjetas del Dashboard
-export const fetchResumenGeneral = async (fechaInicio, fechaFin) => {
-  const response = await fetch(`${BASE_URL}/resumen-general?fechaInicio=${fechaInicio}&fechaFin=${fechaFin}`, {
-    headers: getHeaders()
-  });
-  if (!response.ok) throw new Error('Error al obtener el resumen general');
-  return response.json();
-};
+    if (!response.ok) {
+      throw new Error("Error al obtener los datos del reporte");
+    }
 
-// 2. Estadísticas de Bautizos
-export const fetchEstadisticasBautizos = async (fechaInicio, fechaFin) => {
-  const response = await fetch(`${BASE_URL}/bautizos?fechaInicio=${fechaInicio}&fechaFin=${fechaFin}`, {
-    headers: getHeaders()
-  });
-  if (!response.ok) throw new Error('Error al obtener estadísticas de bautizos');
-  return response.json();
-};
-
-// 3. Estadísticas de Confirmaciones (CORREGIDO: Ahora ya existe la función)
-export const fetchEstadisticasConfirmaciones = async (fechaInicio, fechaFin) => {
-  const response = await fetch(`${BASE_URL}/confirmaciones?fechaInicio=${fechaInicio}&fechaFin=${fechaFin}`, {
-    headers: getHeaders()
-  });
-  if (!response.ok) throw new Error('Error al obtener estadísticas de confirmaciones');
-  return response.json();
-};
-
-// 4. Estadísticas de Matrimonios (CORREGIDO: Ahora ya existe la función)
-export const fetchEstadisticasMatrimonios = async (fechaInicio, fechaFin) => {
-  const response = await fetch(`${BASE_URL}/matrimonios?fechaInicio=${fechaInicio}&fechaFin=${fechaFin}`, {
-    headers: getHeaders()
-  });
-  if (!response.ok) throw new Error('Error al obtener estadísticas de matrimonios');
-  return response.json();
+    return await response.json();
+  } catch (error) {
+    console.error("Error en fetchResumenReportes:", error);
+    throw error;
+  }
 };
