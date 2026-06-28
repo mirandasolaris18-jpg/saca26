@@ -47,10 +47,10 @@ router.post('/', authMiddleware, async (req, res) => {
     }
 
     const sqlVerificar = `
-      SELECT id FROM expedientes_matrimoniales 
-      WHERE (novio_id = ? OR novia_id = ? OR novio_id = ? OR novia_id = ?) 
-      AND estado_tramite IN ('Iniciado', 'Observado', 'Aprobado') AND activo = 1
-    `;
+  SELECT id FROM expedientes_matrimoniales 
+  WHERE (novio_id = ? OR novia_id = ? OR novio_id = ? OR novia_id = ?) 
+  AND estado_tramite NOT IN ('Celebrado', 'Anulado') AND activo = 1
+`;
     const [existentes] = await db.execute(sqlVerificar, [novio_id, novio_id, novia_id, novia_id]);
 
     if (existentes.length > 0) {
