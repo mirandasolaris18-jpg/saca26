@@ -27,7 +27,6 @@ app.use('/api/confirmaciones', confirmacionesRoutes); // 🛠️ 2. AGREGAR ESTA
 app.use('/api/matrimonios', matrimoniosRoutes);
 app.use('/api/reportes', reportesRoutes); //
 
-
 // --- Servidor ---
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {

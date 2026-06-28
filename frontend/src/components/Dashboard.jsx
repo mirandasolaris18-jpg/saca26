@@ -4,9 +4,10 @@ import React, { useState } from 'react';
 import Feligreses from './Feligreses';   
 import Bautizos from './Bautizos';
 import Confirmaciones from './Confirmaciones'; 
-import Matrimonios from './Matrimonios'; // Lo usaremos más adelante
+import Matrimonios from './Matrimonios'; 
 import Catequistas from './Catequistas';
 import Reportes from './Reportes'; 
+import AperturaExpediente from './AperturaExpediente';
 // (Agregaremos los demás aquí a medida que los programemos)
 
 export default function Dashboard({ user }) {
@@ -168,6 +169,7 @@ export default function Dashboard({ user }) {
 
   const renderizarVista = () => {
     switch(vista) {
+      case 'apertura_expediente': return <AperturaExpediente onVolver={() => setVista('inicio')} />;
       case 'inicio': 
         return (
           <div className="bg-white p-8 rounded-xl shadow-sm border border-emerald-100 text-center animate-fade-in">
@@ -181,14 +183,15 @@ export default function Dashboard({ user }) {
       case 'feligreses': return <Feligreses onVolver={() => setVista('inicio')} />;
       case 'bautizos': return <Bautizos onVolver={() => setVista('inicio')} />;
       case 'confirmaciones': return <Confirmaciones onVolver={() => setVista('inicio')} />;
+      case 'matrimonios': return <Matrimonios onVolver={() => setVista('inicio')} />;
       case 'catequistas': return <Catequistas onVolver={() => setVista('inicio')} />;
+      case 'reportes': return <Reportes onVolver={() => setVista('inicio')} />;
       
       default:
         const tituloMenu = menuEstructura.flatMap(m => m.hijos ? [m, ...m.hijos.flatMap(h => h.hijos ? [h, ...h.hijos] : h)] : m).find(x => x.id === vista)?.titulo || vista;
         return <ComponenteEnConstruccion nombre={tituloMenu} />;
     }
   };
-
 
   return (
     <div className="flex h-screen bg-gray-100 font-sans text-gray-800 overflow-hidden">
