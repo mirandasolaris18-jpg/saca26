@@ -1,107 +1,146 @@
+// backend/routes/feligreses.js
 const express = require('express');
 const router = express.Router();
-const authMiddleware = require('../middleware/authMiddleware'); 
-const db = require('../db'); 
+const authMiddleware = require('../middleware/authMiddleware');
+const db = require('../db');
 
-// ==========================================
-// 1. OBTENER FELIGRESES (CON PROMESAS)
-// ==========================================
+// ========================================================================
+// 1. OBTENER TODOS LOS FELIGRESES (INCLUYENDO ESTADO DE SACRAMENTOS)
+// ========================================================================
 router.get('/', authMiddleware, async (req, res) => {
   try {
-    const buscar = req.query.buscar || '';
-    
-    // 🛠️ CORREGIDO: Transformamos el 'activo' (1 o 0) en 'Activo'/'Inactivo' usando IF en SQL
-    let sql = `
-      SELECT 
-        f.id, f.nombre, f.apellido, f.documento_identidad, 
-        f.fecha_nacimiento, f.telefono, f.direccion, 
-        IF(f.activo = 1, 'Activo', 'Inactivo') AS estado, 
-        f.ciudad_id,
-        c.nombre AS ciudad, p.nombre AS pais
+    // Usamos subconsultas para evitar duplicados si alguien tuviera 2 bautizos por error en la BD
+    const sql = `
+      SELECT f.*,
+        IF((SELECT id FROM bautizos WHERE feligres_id = f.id AND activo = 1 LIMIT 1) IS NOT NULL, 1, 0) AS bautizado,
+        IF((SELECT id FROM confirmaciones WHERE feligres_id = f.id AND activo = 1 LIMIT 1) IS NOT NULL, 1, 0) AS confirmado
       FROM feligreses f
-      LEFT JOIN ciudades c ON f.ciudad_id = c.id
-      LEFT JOIN paises p ON c.pais_id = p.id
+      WHERE f.activo = 1
+      ORDER BY f.apellido ASC, f.nombre ASC
     `;
-
-    const params = [];
-
-    if (buscar) {
-      sql += ` WHERE f.nombre LIKE ? 
-               OR f.apellido LIKE ? 
-               OR f.documento_identidad LIKE ? 
-               OR f.direccion LIKE ?`;
-      
-      const queryBusqueda = `%${buscar}%`;
-      params.push(queryBusqueda, queryBusqueda, queryBusqueda, queryBusqueda);
-      sql += ` ORDER BY f.apellido ASC, f.nombre ASC`;
-    } else {
-      sql += ` ORDER BY f.id DESC LIMIT 10`;
-    }
-
-    const [rows] = await db.query(sql, params);
+    
+    const [rows] = await db.execute(sql);
     res.json(rows);
-
-  } catch (err) {
-    console.error("❌ Error al obtener feligreses:", err);
-    return res.status(500).json({ message: "Error interno al consultar feligreses" });
+  } catch (error) {
+    console.error("❌ Error en GET feligreses:", error);
+    res.status(500).json({ message: "Error interno al obtener los feligreses." });
   }
 });
 
-// ==========================================
-// 2. REGISTRAR UN NUEVO FELIGRÉS (CON PROMESAS)
-// ==========================================
+// ========================================================================
+// 2. OBTENER UN FELIGRÉS ESPECÍFICO POR ID
+// ========================================================================
+router.get('/:id', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const sql = `SELECT * FROM feligreses WHERE id = ? AND activo = 1`;
+    const [rows] = await db.execute(sql, [id]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ message: "Feligrés no encontrado." });
+    }
+    res.json(rows[0]);
+  } catch (error) {
+    console.error("❌ Error en GET feligrés por ID:", error);
+    res.status(500).json({ message: "Error interno al obtener el feligrés." });
+  }
+});
+
+// ========================================================================
+// 3. REGISTRAR UN NUEVO FELIGRÉS
+// ========================================================================
 router.post('/', authMiddleware, async (req, res) => {
   try {
-    const { nombre, apellido, documento_identidad, fecha_nacimiento, telefono, direccion, ciudad_id } = req.body;
+    const { 
+      nombre, apellido, genero, documento_identidad, 
+      fecha_nacimiento, telefono, direccion 
+    } = req.body;
+    
+    const creado_por = req.user.username || 'sistema';
 
-    if (!nombre || !apellido) {
-      return res.status(400).json({ message: "El nombre y el apellido son obligatorios." });
-    }
-
-    // 🛠️ CORREGIDO: Eliminamos la columna 'estado'. MySQL asignará 'activo = 1' por defecto automáticamente.
     const sql = `
       INSERT INTO feligreses 
-        (nombre, apellido, documento_identidad, fecha_nacimiento, telefono, direccion, ciudad_id) 
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      (nombre, apellido, genero, documento_identidad, fecha_nacimiento, telefono, direccion, creado_por)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `;
-
+    
     const params = [
-      nombre, 
-      apellido, 
-      documento_identidad || null, 
-      fecha_nacimiento || null, 
-      telefono || null, 
-      direccion || null, 
-      ciudad_id || null
+      nombre, apellido, genero || 'Masculino', documento_identidad || null, 
+      fecha_nacimiento || null, telefono || null, direccion || null, creado_por
     ];
 
-    const [result] = await db.query(sql, params);
-    res.status(201).json({ message: "Feligrés registrado con éxito", id: result.insertId });
-
-  } catch (err) {
-    console.error("❌ Error al insertar feligrés:", err);
-    return res.status(500).json({ message: "No se pudo registrar en la base de datos." });
+    const [result] = await db.execute(sql, params);
+    
+    res.status(201).json({ 
+      message: "Feligrés registrado exitosamente.",
+      id: result.insertId 
+    });
+  } catch (error) {
+    console.error("❌ Error en POST feligreses:", error);
+    // Manejo de error si el CI ya existe (dependiendo de si le pusiste UNIQUE en la BD)
+    if (error.code === 'ER_DUP_ENTRY') {
+      return res.status(400).json({ message: "Ya existe un feligrés con ese documento de identidad." });
+    }
+    res.status(500).json({ message: "Error interno al registrar el feligrés." });
   }
 });
 
-// ==========================================
-// 3. OBTENER LISTA DE CIUDADES (PÚBLICO PARA FORMULARIO)
-// ==========================================
-router.get('/ciudades-lista', async (req, res) => {
+// ========================================================================
+// 4. ACTUALIZAR DATOS DE UN FELIGRÉS
+// ========================================================================
+router.put('/:id', authMiddleware, async (req, res) => {
   try {
+    const { id } = req.params;
+    const { 
+      nombre, apellido, genero, documento_identidad, 
+      fecha_nacimiento, telefono, direccion 
+    } = req.body;
+
     const sql = `
-      SELECT c.id, c.nombre AS ciudad, p.nombre AS pais 
-      FROM ciudades c
-      JOIN paises p ON c.pais_id = p.id
-      ORDER BY c.nombre ASC
+      UPDATE feligreses 
+      SET nombre = ?, apellido = ?, genero = ?, documento_identidad = ?, 
+          fecha_nacimiento = ?, telefono = ?, direccion = ?
+      WHERE id = ? AND activo = 1
     `;
+    
+    const params = [
+      nombre, apellido, genero, documento_identidad, 
+      fecha_nacimiento, telefono, direccion, id
+    ];
 
-    const [rows] = await db.query(sql);
-    res.json(rows);
+    const [result] = await db.execute(sql, params);
 
-  } catch (err) {
-    console.error("❌ Error al obtener catálogo de ciudades:", err);
-    return res.status(500).json({ message: "Error al obtener catálogo de ciudades" });
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: "Feligrés no encontrado o no se pudo actualizar." });
+    }
+
+    res.json({ message: "Feligrés actualizado correctamente." });
+  } catch (error) {
+    console.error("❌ Error en PUT feligreses:", error);
+    res.status(500).json({ message: "Error interno al actualizar el feligrés." });
+  }
+});
+
+// ========================================================================
+// 5. ELIMINAR FELIGRÉS (Soft Delete / Baja lógica)
+// ========================================================================
+router.delete('/:id', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // En lugar de borrarlo de la base de datos (DELETE FROM), 
+    // lo marcamos como inactivo para no romper el historial.
+    const sql = `UPDATE feligreses SET activo = 0 WHERE id = ?`;
+    const [result] = await db.execute(sql, [id]);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: "Feligrés no encontrado." });
+    }
+
+    res.json({ message: "Feligrés eliminado correctamente." });
+  } catch (error) {
+    console.error("❌ Error en DELETE feligreses:", error);
+    res.status(500).json({ message: "Error interno al eliminar el feligrés." });
   }
 });
 

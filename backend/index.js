@@ -13,6 +13,12 @@ const expedientesRoutes = require('./routes/expedientes'); // 👈 NUEVA RUTA IM
 
 const app = express();
 
+app.use((req, res, next) => {
+  console.log(`Petición recibida: ${req.method} ${req.url}`);
+  next();
+});
+
+
 // 2. Middlewares globales
 app.use(cors());              
 app.use(express.json());      
