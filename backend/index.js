@@ -9,19 +9,19 @@ const bautizosRoutes = require('./routes/bautizos');
 const confirmacionesRoutes = require('./routes/confirmaciones');
 const matrimoniosRoutes = require('./routes/matrimonios');
 const reportesRoutes = require('./routes/reportes');
-const expedientesRoutes = require('./routes/expedientes'); // 👈 NUEVA RUTA IMPORTADA
+const expedientesRoutes = require('./routes/expedientes'); 
 
 const app = express();
 
+// 2. Middlewares globales (¡MUY IMPORTANTE: SIEMPRE ANTES DE LAS RUTAS!)
+app.use(cors());              
+app.use(express.json());      
+
+// Logger para ver qué pasa en la consola
 app.use((req, res, next) => {
   console.log(`Petición recibida: ${req.method} ${req.url}`);
   next();
 });
-
-
-// 2. Middlewares globales
-app.use(cors());              
-app.use(express.json());      
 
 // 3. Rutas públicas
 app.use('/api/auth', authRoutes); 
@@ -32,7 +32,7 @@ app.use('/api/bautizos', bautizosRoutes);
 app.use('/api/confirmaciones', confirmacionesRoutes);
 app.use('/api/matrimonios', matrimoniosRoutes);
 app.use('/api/reportes', reportesRoutes);
-app.use('/api/expedientes', expedientesRoutes); // 👈 NUEVA RUTA CONECTADA
+app.use('/api/expedientes', expedientesRoutes); // 👈 LOS INTERVINIENTES VIVEN AQUÍ ADENTRO
 
 // 5. Encender el Servidor
 const PORT = process.env.PORT || 5000;

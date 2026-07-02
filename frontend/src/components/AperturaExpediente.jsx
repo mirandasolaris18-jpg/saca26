@@ -1,22 +1,33 @@
+// src/components/AperturaExpediente.jsx
 import React, { useState, useEffect } from 'react';
-import { fetchExpedientes, programarMatrimonio } from '../services/expedientesService';
+import { fetchExpedientes, programarMatrimonio, saveIntervinientes } from '../services/expedientesService';
 import { fetchFeligreses } from '../services/feligresesService';
 
 export default function AperturaExpediente({ onVolver, user }) {
+  // --- ESTADOS GLOBALES ---
+  const [view, setView] = useState('listado'); // 'listado' o 'intervinientes'
+  const [expedienteSeleccionado, setExpedienteSeleccionado] = useState(null);
   const [expedientes, setExpedientes] = useState([]);
   const [feligreses, setFeligreses] = useState([]);
   const [cargando, setCargando] = useState(false);
   const [mostrarModal, setMostrarModal] = useState(false);
-  
-  // Estado para los datos de impresión
   const [datosImpresion, setDatosImpresion] = useState(null);
 
+  // --- ESTADOS DE FORMULARIOS ---
   const [form, setForm] = useState({
     novio_id: '',
     novia_id: '',
     fecha_boda_programada: ''
   });
 
+  const rolesIntervinientes = [
+    'Padre Novio', 'Madre Novio', 'Padre Novia', 'Madre Novia', 
+    'Padrino', 'Madrina', 'Testigo 1', 'Testigo 2'
+  ];
+  
+  const [intervinientes, setIntervinientes] = useState({});
+
+  // --- FUNCIONES DE CARGA ---
   const cargarDatos = async () => {
     setCargando(true);
     try {
@@ -36,11 +47,12 @@ export default function AperturaExpediente({ onVolver, user }) {
     cargarDatos();
   }, []);
 
+  // --- LÓGICA: APERTURA DE EXPEDIENTE ---
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmitNuevo = async (e) => {
     e.preventDefault();
     if (form.novio_id === form.novia_id) {
       return alert("⚠️ Los contrayentes no pueden ser la misma persona.");
@@ -49,7 +61,6 @@ export default function AperturaExpediente({ onVolver, user }) {
       await programarMatrimonio(form);
       alert("✅ Expediente matrimonial aperturado con éxito. Se preparará el comprobante de reserva.");
       
-      // Preparar datos para imprimir antes de limpiar el formulario
       const novioObj = hombres.find(h => h.id === parseInt(form.novio_id));
       const noviaObj = mujeres.find(m => m.id === parseInt(form.novia_id));
       
@@ -64,10 +75,9 @@ export default function AperturaExpediente({ onVolver, user }) {
       setForm({ novio_id: '', novia_id: '', fecha_boda_programada: '' });
       cargarDatos();
 
-      // Disparar la ventana de impresión tras un breve retardo para renderizar
       setTimeout(() => {
         window.print();
-        setDatosImpresion(null); // Limpiar después de imprimir
+        setDatosImpresion(null);
       }, 500);
 
     } catch (error) {
@@ -75,16 +85,37 @@ export default function AperturaExpediente({ onVolver, user }) {
     }
   };
 
+  // --- LÓGICA: INTERVINIENTES ---
+  const manejarContinuar = (exp) => {
+    setExpedienteSeleccionado(exp);
+    setView('intervinientes');
+  };
+
+  const handleGuardarIntervinientes = async () => {
+    try {
+      // Transformamos el objeto { 'Padrino': 5, 'Testigo 1': 8 } en el array que espera el backend
+      const lista = Object.entries(intervinientes).map(([rol, id]) => ({ 
+        rol: rol, 
+        feligres_id: id 
+      }));
+      
+      await saveIntervinientes(expedienteSeleccionado.id, lista);
+      alert("✅ Intervinientes registrados con éxito.");
+      setView('listado');
+    } catch (error) { 
+      alert("❌ " + error.message); 
+    }
+  };
+
+  // --- FILTROS Y AYUDANTES ---
   const hombres = feligreses.filter(f => f.genero === 'Masculino' || f.genero === 'M' || !f.genero);
   const mujeres = feligreses.filter(f => f.genero === 'Femenino' || f.genero === 'F' || !f.genero);
 
-  // Obtener objetos seleccionados para verificar sacramentos
-  const novioSeleccionado = hombres.find(h => h.id === parseInt(form.novio_id));
-  const noviaSeleccionada = mujeres.find(m => m.id === parseInt(form.novia_id));
-
-  // Función auxiliar para renderizar advertencias
-  const renderAdvertenciaSacramentos = (persona) => {
+  const renderAdvertenciaSacramentos = (persona_id) => {
+    if (!persona_id) return null;
+    const persona = feligreses.find(f => f.id === parseInt(persona_id));
     if (!persona) return null;
+
     const faltan = [];
     if (!persona.bautizado) faltan.push("Bautizo");
     if (!persona.confirmado) faltan.push("Confirmación");
@@ -93,140 +124,184 @@ export default function AperturaExpediente({ onVolver, user }) {
       return (
         <div className="mt-2 text-xs text-red-600 bg-red-50 p-2 rounded border border-red-200 animate-fade-in">
           ⚠️ <strong>Atención:</strong> {persona.nombre} {persona.apellido} no cuenta con los sacramentos de: <b>{faltan.join(" y ")}</b>. <br/>
-          <span className="text-[10px] text-gray-600">Puede continuar con la reserva, pero deberá regularizar esto en el proceso.</span>
+          <span className="text-[10px] text-gray-600">Puede continuar, pero deberá regularizar esto en el proceso.</span>
         </div>
       );
     }
     return <div className="mt-2 text-xs text-emerald-600 font-semibold">✅ Cuenta con sacramentos base.</div>;
   };
 
+  // --- RENDERIZADO ---
   return (
     <>
-      {/* =========================================================
-          VISTA NORMAL DEL SISTEMA (Se oculta al imprimir)
-      ========================================================= */}
       <div className="bg-white rounded-xl shadow-lg border border-emerald-100 p-6 animate-fade-in print:hidden">
-        <div className="flex justify-between items-center mb-6">
-          <div>
-            <h2 className="text-2xl font-bold text-emerald-800 mt-1 flex items-center gap-2">
-              <span className="text-3xl">💍</span> Apertura de Expedientes Matrimoniales
-            </h2>
-            <p className="text-gray-500 text-sm mt-1">Paso 1: Agenda de fecha e inicio del trámite.</p>
-          </div>
-          <button 
-            onClick={() => setMostrarModal(true)} 
-            className="px-4 py-2 bg-emerald-700 text-white text-sm font-semibold rounded-lg hover:bg-emerald-800 transition-colors shadow-sm"
-          >
-            + Iniciar Nuevo Trámite
-          </button>
-        </div>
+        
+        {view === 'listado' ? (
+          /* ==========================================
+                        VISTA 1: TABLA
+          ========================================== */
+          <>
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h2 className="text-2xl font-bold text-emerald-800 mt-1 flex items-center gap-2">
+                  <span className="text-3xl">💍</span> Apertura de Expedientes Matrimoniales
+                </h2>
+                <p className="text-gray-500 text-sm mt-1">Paso 1: Agenda de fecha e inicio del trámite.</p>
+              </div>
+              <button 
+                onClick={() => setMostrarModal(true)} 
+                className="px-4 py-2 bg-emerald-700 text-white text-sm font-semibold rounded-lg hover:bg-emerald-800 transition-colors shadow-sm"
+              >
+                + Iniciar Nuevo Trámite
+              </button>
+            </div>
 
-        {/* Tabla de Expedientes */}
-        <div className="overflow-x-auto rounded-lg border border-gray-200 mt-4">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-emerald-50 text-emerald-800 text-sm border-b border-emerald-200">
-                <th className="p-3 w-16 text-center">Nº Exp.</th>
-                <th className="p-3">Contrayente (Novio)</th>
-                <th className="p-3">Contrayente (Novia)</th>
-                <th className="p-3 text-center">Fecha de Boda</th>
-                <th className="p-3 text-center">Estado</th>
-                <th className="p-3 text-center">Acciones</th>
-              </tr>
-            </thead>
-            <tbody className="text-sm text-gray-700 divide-y divide-gray-100">
-              {cargando ? (
-                <tr><td colSpan="6" className="p-6 text-center text-emerald-600 font-bold">Cargando expedientes...</td></tr>
-              ) : expedientes.length > 0 ? (
-                expedientes.map((exp) => (
-                  <tr key={exp.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="p-3 font-mono text-xs text-center font-bold text-gray-500">#{exp.id}</td>
-                    <td className="p-3 font-semibold uppercase">{exp.novio_nombre}</td>
-                    <td className="p-3 font-semibold uppercase">{exp.novia_nombre}</td>
-                    <td className="p-3 text-center font-bold text-emerald-700">
-                      {new Date(exp.fecha_boda_programada).toLocaleDateString('es-ES')}
-                    </td>
-                    <td className="p-3 text-center">
-                      <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-bold">
-                        {exp.estado_tramite}
-                      </span>
-                    </td>
-                    <td className="p-3 text-center">
-                      <button className="text-emerald-600 font-semibold hover:underline text-xs cursor-pointer">
-                        Continuar Trámite →
-                      </button>
-                    </td>
+            <div className="overflow-x-auto rounded-lg border border-gray-200 mt-4">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-emerald-50 text-emerald-800 text-sm border-b border-emerald-200">
+                    <th className="p-3 w-16 text-center">Nº Exp.</th>
+                    <th className="p-3">Contrayente (Novio)</th>
+                    <th className="p-3">Contrayente (Novia)</th>
+                    <th className="p-3 text-center">Fecha de Boda</th>
+                    <th className="p-3 text-center">Estado</th>
+                    <th className="p-3 text-center">Acciones</th>
                   </tr>
-                ))
-              ) : (
-                <tr><td colSpan="6" className="p-6 text-center text-gray-500 italic">No hay expedientes en curso.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+                </thead>
+                <tbody className="text-sm text-gray-700 divide-y divide-gray-100">
+                  {cargando ? (
+                    <tr><td colSpan="6" className="p-6 text-center text-emerald-600 font-bold">Cargando expedientes...</td></tr>
+                  ) : expedientes.length > 0 ? (
+                    expedientes.map((exp) => (
+                      <tr key={exp.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="p-3 font-mono text-xs text-center font-bold text-gray-500">#{exp.id}</td>
+                        <td className="p-3 font-semibold uppercase">{exp.novio_nombre}</td>
+                        <td className="p-3 font-semibold uppercase">{exp.novia_nombre}</td>
+                        <td className="p-3 text-center font-bold text-emerald-700">
+                          {new Date(exp.fecha_boda_programada).toLocaleDateString('es-ES')}
+                        </td>
+                        <td className="p-3 text-center">
+                          <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-bold">
+                            {exp.estado_tramite}
+                          </span>
+                        </td>
+                        <td className="p-3 text-center">
+                          <button 
+                            onClick={() => manejarContinuar(exp)} 
+                            className="text-emerald-600 font-semibold hover:underline text-xs cursor-pointer"
+                          >
+                            Continuar Trámite →
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr><td colSpan="6" className="p-6 text-center text-gray-500 italic">No hay expedientes en curso.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
 
-        {/* Modal de Reserva */}
-        {mostrarModal && (
-          <div className="fixed top-0 left-0 w-full h-full bg-black/60 flex justify-center items-center z-50 p-4">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl p-6 relative max-h-[95vh] overflow-y-auto custom-scrollbar">
-              <button onClick={() => setMostrarModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-red-500 text-2xl font-bold cursor-pointer">×</button>
-              <h3 className="text-xl font-bold text-gray-800 mb-6 border-b pb-2">Agendar Nueva Boda</h3>
-              
-              <form onSubmit={handleSubmit} className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* NOVIO */}
-                  <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 flex flex-col justify-between">
-                    <div>
-                      <label className="block text-xs font-bold text-blue-900 uppercase mb-2">1. Seleccionar Novio *</label>
-                      <select 
-                        name="novio_id" required value={form.novio_id} onChange={handleChange} 
-                        className="w-full px-3 py-2 border border-blue-300 rounded outline-none text-sm bg-white font-semibold"
-                      >
-                        <option value="">-- Buscar feligrés --</option>
-                        {hombres.map(f => (
-                          <option key={f.id} value={f.id}>{f.apellido} {f.nombre} (CI: {f.documento_identidad})</option>
-                        ))}
-                      </select>
+            {/* MODAL DE RESERVA */}
+            {mostrarModal && (
+              <div className="fixed top-0 left-0 w-full h-full bg-black/60 flex justify-center items-center z-50 p-4">
+                <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl p-6 relative max-h-[95vh] overflow-y-auto custom-scrollbar">
+                  <button onClick={() => setMostrarModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-red-500 text-2xl font-bold cursor-pointer">×</button>
+                  <h3 className="text-xl font-bold text-gray-800 mb-6 border-b pb-2">Agendar Nueva Boda</h3>
+                  
+                  <form onSubmit={handleSubmitNuevo} className="space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 flex flex-col justify-between">
+                        <div>
+                          <label className="block text-xs font-bold text-blue-900 uppercase mb-2">1. Seleccionar Novio *</label>
+                          <select 
+                            name="novio_id" required value={form.novio_id} onChange={handleChange} 
+                            className="w-full px-3 py-2 border border-blue-300 rounded outline-none text-sm bg-white font-semibold"
+                          >
+                            <option value="">-- Buscar feligrés --</option>
+                            {hombres.map(f => (
+                              <option key={f.id} value={f.id}>{f.apellido} {f.nombre} (CI: {f.documento_identidad})</option>
+                            ))}
+                          </select>
+                        </div>
+                        {renderAdvertenciaSacramentos(form.novio_id)}
+                      </div>
+
+                      <div className="bg-pink-50 p-4 rounded-lg border border-pink-100 flex flex-col justify-between">
+                        <div>
+                          <label className="block text-xs font-bold text-pink-900 uppercase mb-2">2. Seleccionar Novia *</label>
+                          <select 
+                            name="novia_id" required value={form.novia_id} onChange={handleChange} 
+                            className="w-full px-3 py-2 border border-pink-300 rounded outline-none text-sm bg-white font-semibold"
+                          >
+                            <option value="">-- Buscar feligresa --</option>
+                            {mujeres.map(f => (
+                              <option key={f.id} value={f.id}>{f.apellido} {f.nombre} (CI: {f.documento_identidad})</option>
+                            ))}
+                          </select>
+                        </div>
+                        {renderAdvertenciaSacramentos(form.novia_id)}
+                      </div>
                     </div>
-                    {/* Alerta dinámica de sacramentos del novio */}
-                    {renderAdvertenciaSacramentos(novioSeleccionado)}
-                  </div>
 
-                  {/* NOVIA */}
-                  <div className="bg-pink-50 p-4 rounded-lg border border-pink-100 flex flex-col justify-between">
-                    <div>
-                      <label className="block text-xs font-bold text-pink-900 uppercase mb-2">2. Seleccionar Novia *</label>
-                      <select 
-                        name="novia_id" required value={form.novia_id} onChange={handleChange} 
-                        className="w-full px-3 py-2 border border-pink-300 rounded outline-none text-sm bg-white font-semibold"
-                      >
-                        <option value="">-- Buscar feligresa --</option>
-                        {mujeres.map(f => (
-                          <option key={f.id} value={f.id}>{f.apellido} {f.nombre} (CI: {f.documento_identidad})</option>
-                        ))}
-                      </select>
+                    <div className="bg-emerald-50 p-4 rounded-lg border border-emerald-100 w-full md:w-1/2 mx-auto">
+                      <label className="block text-xs font-bold text-emerald-900 uppercase mb-2 text-center">3. Fecha Programada *</label>
+                      <input 
+                        type="date" name="fecha_boda_programada" required value={form.fecha_boda_programada} onChange={handleChange} 
+                        className="w-full px-3 py-2 border border-emerald-300 rounded outline-none text-sm text-center font-bold text-emerald-900"
+                      />
                     </div>
-                    {/* Alerta dinámica de sacramentos de la novia */}
-                    {renderAdvertenciaSacramentos(noviaSeleccionada)}
+
+                    <div className="flex justify-end gap-3 pt-4 border-t">
+                      <button type="button" onClick={() => setMostrarModal(false)} className="px-4 py-2 bg-gray-200 text-gray-700 text-sm font-semibold rounded-lg hover:bg-gray-300 cursor-pointer">Cancelar</button>
+                      <button type="submit" className="px-4 py-2 bg-emerald-700 text-white text-sm font-semibold rounded-lg hover:bg-emerald-800 cursor-pointer flex items-center gap-2">
+                        <span>💾</span> Guardar e Imprimir Comprobante
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          /* ==========================================
+               VISTA 2: ASIGNACIÓN DE INTERVINIENTES
+          ========================================== */
+          <div className="animate-fade-in">
+            <button onClick={() => setView('listado')} className="mb-4 text-gray-500 hover:text-emerald-700 text-sm font-bold flex items-center gap-1">
+              ← Volver al listado
+            </button>
+            <h2 className="text-xl font-bold text-emerald-800 mb-2">Paso 2: Asignar Intervinientes</h2>
+            <p className="text-sm text-gray-600 mb-6">
+              Expediente #{expedienteSeleccionado?.id} | Contrayentes: <span className="font-bold">{expedienteSeleccionado?.novio_nombre}</span> y <span className="font-bold">{expedienteSeleccionado?.novia_nombre}</span>
+            </p>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {rolesIntervinientes.map((rol) => (
+                <div key={rol} className="bg-gray-50 p-4 rounded-lg border border-gray-200 flex flex-col justify-between">
+                  <div>
+                    <label className="block text-xs font-bold uppercase mb-2 text-gray-700">{rol}</label>
+                    <select 
+                      className="w-full border border-gray-300 p-2 rounded text-sm outline-none focus:border-emerald-500 bg-white"
+                      value={intervinientes[rol] || ''}
+                      onChange={(e) => setIntervinientes({...intervinientes, [rol]: e.target.value})}
+                    >
+                      <option value="">-- Seleccionar --</option>
+                      {feligreses.map(f => (
+                        <option key={f.id} value={f.id}>{f.apellido} {f.nombre} (CI: {f.documento_identidad})</option>
+                      ))}
+                    </select>
                   </div>
+                  {renderAdvertenciaSacramentos(intervinientes[rol])}
                 </div>
+              ))}
+            </div>
 
-                {/* FECHA */}
-                <div className="bg-emerald-50 p-4 rounded-lg border border-emerald-100 w-full md:w-1/2 mx-auto">
-                  <label className="block text-xs font-bold text-emerald-900 uppercase mb-2 text-center">3. Fecha Programada *</label>
-                  <input 
-                    type="date" name="fecha_boda_programada" required value={form.fecha_boda_programada} onChange={handleChange} 
-                    className="w-full px-3 py-2 border border-emerald-300 rounded outline-none text-sm text-center font-bold text-emerald-900"
-                  />
-                </div>
-
-                <div className="flex justify-end gap-3 pt-4 border-t">
-                  <button type="button" onClick={() => setMostrarModal(false)} className="px-4 py-2 bg-gray-200 text-gray-700 text-sm font-semibold rounded-lg hover:bg-gray-300 cursor-pointer">Cancelar</button>
-                  <button type="submit" className="px-4 py-2 bg-emerald-700 text-white text-sm font-semibold rounded-lg hover:bg-emerald-800 cursor-pointer flex items-center gap-2">
-                    <span>💾</span> Guardar e Imprimir Comprobante
-                  </button>
-                </div>
-              </form>
+            <div className="mt-8 flex justify-end gap-3 pt-4 border-t">
+              <button onClick={() => setView('listado')} className="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg font-bold hover:bg-gray-300">Cancelar</button>
+              <button onClick={handleGuardarIntervinientes} className="px-6 py-2 bg-emerald-700 text-white rounded-lg font-bold hover:bg-emerald-800">
+                Guardar Intervinientes
+              </button>
             </div>
           </div>
         )}
@@ -237,7 +312,6 @@ export default function AperturaExpediente({ onVolver, user }) {
       ========================================================= */}
       {datosImpresion && (
         <div className="hidden print:block font-sans text-black w-full bg-white h-screen">
-          {/* Usamos un grid para dividir la hoja en dos copias (Media carta cada una) */}
           <div className="grid grid-rows-2 h-full py-4 gap-8 max-w-[21.5cm] mx-auto">
             
             {/* Copia 1: Parroquia */}

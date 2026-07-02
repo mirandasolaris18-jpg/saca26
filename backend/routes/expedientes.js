@@ -83,4 +83,54 @@ router.post('/', authMiddleware, async (req, res) => {
   }
 });
 
+// ========================================================================
+// OBTENER INTERVINIENTES DE UN EXPEDIENTE (GET)
+// ========================================================================
+router.get('/:id/intervinientes', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const sql = `
+      SELECT ei.id, ei.rol, ei.feligres_id, f.nombre, f.apellido, f.documento_identidad
+      FROM expedientes_intervinientes ei
+      JOIN feligreses f ON ei.feligres_id = f.id
+      WHERE ei.expediente_id = ? AND ei.activo = 1
+    `;
+    const [rows] = await db.execute(sql, [id]);
+    res.json(rows);
+  } catch (error) {
+    console.error("❌ Error en GET intervinientes:", error);
+    res.status(500).json({ message: "Error al obtener los intervinientes." });
+  }
+});
+
+// ========================================================================
+// GUARDAR O ACTUALIZAR INTERVINIENTES (POST)
+// ========================================================================
+router.post('/:id/intervinientes', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { intervinientes } = req.body; // Esperamos un array: [{ rol: 'Padrino', feligres_id: 5 }, ...]
+    const creado_por = req.user?.username || 'sistema';
+
+    // 1. Limpiamos los intervinientes anteriores de este expediente (para evitar duplicados si están editando)
+    await db.execute(`DELETE FROM expedientes_intervinientes WHERE expediente_id = ?`, [id]);
+
+    // 2. Insertamos los nuevos
+    if (intervinientes && intervinientes.length > 0) {
+      const sqlInsert = `INSERT INTO expedientes_intervinientes (expediente_id, feligres_id, rol, creado_por) VALUES (?, ?, ?, ?)`;
+      
+      for (const item of intervinientes) {
+        if (item.feligres_id) { // Solo guardamos si realmente seleccionaron a alguien
+          await db.execute(sqlInsert, [id, item.feligres_id, item.rol, creado_por]);
+        }
+      }
+    }
+
+    res.status(200).json({ message: "Intervinientes registrados correctamente." });
+  } catch (error) {
+    console.error("❌ Error en POST intervinientes:", error);
+    res.status(500).json({ message: "Error al guardar los intervinientes." });
+  }
+});
+
 module.exports = router;
