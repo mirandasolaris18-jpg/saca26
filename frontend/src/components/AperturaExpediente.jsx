@@ -4,6 +4,7 @@ import { fetchExpedientes, programarMatrimonio, saveIntervinientes, cambiarEstad
 import { fetchFeligreses } from '../services/feligresesService';
 import { fetchParroquias } from '../services/parroquiasService';
 import DigitalizacionDocumentos from './DigitalizacionDocumentos';
+import ActasYCelebracion from './ActasYCelebracion';
 
 const calcularEdad = (fechaNac) => {
   if(!fechaNac) return '___';
@@ -428,12 +429,8 @@ export default function AperturaExpediente({ onVolver, user }) {
         )}
 
         {view === 'celebracion' && (
-           <div className="p-12 text-center">
-              <button onClick={() => setView('listado')} className="mb-4 text-gray-500 font-bold hover:text-amber-700">← Volver al listado</button>
-              <h2 className="text-2xl font-bold text-amber-800">🎉 Módulo 2.3.6: Actas y Celebración</h2>
-              <p className="text-gray-600 mt-2">Expediente #{expedienteSeleccionado?.id}</p>
-           </div>
-        )}
+   <ActasYCelebracion expedienteId={expedienteSeleccionado.id} onVolver={() => setView('listado')} user={user} />
+)}
 
         {/* VISTA INTERVINIENTES (USANDO LAS LISTAS EXCLUSIVAS dispHombres, etc.) */}
         {view === 'intervinientes' && (

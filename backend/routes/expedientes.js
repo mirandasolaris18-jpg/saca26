@@ -252,3 +252,35 @@ router.get('/:id/impresion', authMiddleware, async (req, res) => {
 });
 
 module.exports = router;
+
+// ========================================================================
+// 8. GUARDAR DATOS DEL ACTA Y REGISTRO CIVIL (MÓDULO CELEBRACIÓN)
+// ========================================================================
+router.put('/:id/celebracion', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { 
+      numero_libro, folio, numero_acta, 
+      lugar_civil, fecha_civil, oficialia_civil, partida_civil, numero_civil, obispo_diocesis 
+    } = req.body;
+
+    const sql = `
+      UPDATE expedientes_matrimoniales 
+      SET numero_libro = ?, folio = ?, numero_acta = ?, 
+          lugar_civil = ?, fecha_civil = ?, oficialia_civil = ?, partida_civil = ?, numero_civil = ?, obispo_diocesis = ?,
+          estado_tramite = 'Celebrado'
+      WHERE id = ?
+    `;
+    
+    await db.execute(sql, [
+      numero_libro, folio, numero_acta, 
+      lugar_civil, fecha_civil, oficialia_civil, partida_civil, numero_civil, obispo_diocesis, 
+      id
+    ]);
+    
+    res.json({ message: "Datos del acta guardados y matrimonio celebrado." });
+  } catch (error) {
+    console.error("❌ Error al guardar celebración:", error);
+    res.status(500).json({ message: "Error al registrar el acta." });
+  }
+});
