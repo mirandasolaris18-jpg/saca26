@@ -36,17 +36,47 @@ export const fetchIntervinientes = async (expedienteId) => {
 };
 
 // Guardar los intervinientes
-export const saveIntervinientes = async (expedienteId, intervinientes) => {
+// src/services/expedientesService.js
+
+export const saveIntervinientes = async (id, intervinientesData) => {
   const token = localStorage.getItem("token");
-  const response = await fetch(`${API_URL}/${expedienteId}/intervinientes`, {
-    method: "POST",
+  
+  const response = await fetch(`http://localhost:5000/api/expedientes/${id}/intervinientes`, {
+    method: 'POST',
     headers: {
-      "Authorization": `Bearer ${token}`,
-      "Content-Type": "application/json"
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json' // 🚨 ESTO ES VITAL PARA QUE EL BACKEND ENTIENDA EL ARRAY
     },
-    body: JSON.stringify({ intervinientes })
+    body: JSON.stringify(intervinientesData)
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || "Error al guardar intervinientes");
+  }
+  return data;
+};
+
+export const cambiarEstadoExpediente = async (id, estado) => {
+  const token = localStorage.getItem("token");
+  const response = await fetch(`${API_URL}/${id}/estado`, {
+    method: "PUT",
+    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ estado })
   });
   const data = await response.json();
-  if (!response.ok) throw new Error(data.message || "Error al guardar intervinientes.");
+  if (!response.ok) throw new Error(data.message);
+  return data;
+};
+
+export const trasladarExpediente = async (id, parroquia_destino_id) => {
+  const token = localStorage.getItem("token");
+  const response = await fetch(`${API_URL}/${id}/trasladar`, {
+    method: "PUT",
+    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ parroquia_destino_id })
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.message);
   return data;
 };

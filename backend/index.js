@@ -1,3 +1,7 @@
+
+
+
+
 require('dotenv').config(); 
 const express = require('express');
 const cors = require('cors');
@@ -10,12 +14,17 @@ const confirmacionesRoutes = require('./routes/confirmaciones');
 const matrimoniosRoutes = require('./routes/matrimonios');
 const reportesRoutes = require('./routes/reportes');
 const expedientesRoutes = require('./routes/expedientes'); 
+const parroquiasRoutes = require('./routes/parroquias');
 
 const app = express();
 
 // 2. Middlewares globales (¡MUY IMPORTANTE: SIEMPRE ANTES DE LAS RUTAS!)
 app.use(cors());              
 app.use(express.json());      
+app.use('/api/expedientes', expedientesRoutes);
+app.use('/api/feligreses', feligresesRoutes);
+app.use('/api/parroquias', parroquiasRoutes); 
+
 
 // Logger para ver qué pasa en la consola
 app.use((req, res, next) => {

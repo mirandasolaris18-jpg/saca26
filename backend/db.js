@@ -1,12 +1,13 @@
 // db.js
 const mysql = require('mysql2/promise');
+require('dotenv').config();
 
-// Pool de conexiones
+// Pool de conexiones dinámico
 const db = mysql.createPool({
-  host: 'localhost',
-  user: 'proyecto1',        // Cambia a 'root' si usas XAMPP por defecto
-  password: '123',          // En XAMPP normalmente la contraseña es ''
-  database: 'proyecto1',    // Nombre de tu base de datos
+  host: process.env.DB_HOST || 'localhost',
+  user: process.env.DB_USER || 'root2',
+  password: process.env.DB_PASSWORD || '1234567890',
+  database: process.env.DB_NAME || 'proyecto1',
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0

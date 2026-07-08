@@ -5,15 +5,16 @@ const authMiddleware = require('../middleware/authMiddleware');
 const db = require('../db');
 
 // ========================================================================
-// 1. OBTENER TODOS LOS FELIGRESES (INCLUYENDO ESTADO DE SACRAMENTOS)
+// 1. OBTENER TODOS LOS FELIGRESES (INCLUYENDO ESTADO DE SACRAMENTOS Y MATRIMONIO)
 // ========================================================================
 router.get('/', authMiddleware, async (req, res) => {
   try {
-    // Usamos subconsultas para evitar duplicados si alguien tuviera 2 bautizos por error en la BD
     const sql = `
       SELECT f.*,
         IF((SELECT id FROM bautizos WHERE feligres_id = f.id AND activo = 1 LIMIT 1) IS NOT NULL, 1, 0) AS bautizado,
-        IF((SELECT id FROM confirmaciones WHERE feligres_id = f.id AND activo = 1 LIMIT 1) IS NOT NULL, 1, 0) AS confirmado
+        IF((SELECT id FROM confirmaciones WHERE feligres_id = f.id AND activo = 1 LIMIT 1) IS NOT NULL, 1, 0) AS confirmado,
+        (SELECT fecha_matrimonio FROM matrimonios WHERE (novio_id = f.id OR novia_id = f.id) AND activo = 1 LIMIT 1) AS fecha_matrimonio,
+        (SELECT p.nombre FROM matrimonios m JOIN parroquias p ON m.parroquia_id = p.id WHERE (m.novio_id = f.id OR m.novia_id = f.id) AND m.activo = 1 LIMIT 1) AS parroquia_matrimonio
       FROM feligreses f
       WHERE f.activo = 1
       ORDER BY f.apellido ASC, f.nombre ASC
@@ -51,11 +52,7 @@ router.get('/:id', authMiddleware, async (req, res) => {
 // ========================================================================
 router.post('/', authMiddleware, async (req, res) => {
   try {
-    const { 
-      nombre, apellido, genero, documento_identidad, 
-      fecha_nacimiento, telefono, direccion 
-    } = req.body;
-    
+    const { nombre, apellido, genero, documento_identidad, fecha_nacimiento, telefono, direccion } = req.body;
     const creado_por = req.user.username || 'sistema';
 
     const sql = `
@@ -64,22 +61,16 @@ router.post('/', authMiddleware, async (req, res) => {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `;
     
-    const params = [
+    const [result] = await db.execute(sql, [
       nombre, apellido, genero || 'Masculino', documento_identidad || null, 
       fecha_nacimiento || null, telefono || null, direccion || null, creado_por
-    ];
-
-    const [result] = await db.execute(sql, params);
+    ]);
     
-    res.status(201).json({ 
-      message: "Feligrés registrado exitosamente.",
-      id: result.insertId 
-    });
+    res.status(201).json({ message: "Feligrés registrado exitosamente.", id: result.insertId });
   } catch (error) {
     console.error("❌ Error en POST feligreses:", error);
-    // Manejo de error si el CI ya existe (dependiendo de si le pusiste UNIQUE en la BD)
     if (error.code === 'ER_DUP_ENTRY') {
-      return res.status(400).json({ message: "Ya existe un feligrés con ese documento de identidad." });
+      return res.status(400).json({ message: "Ya existe un feligrés con ese documento." });
     }
     res.status(500).json({ message: "Error interno al registrar el feligrés." });
   }
@@ -91,10 +82,7 @@ router.post('/', authMiddleware, async (req, res) => {
 router.put('/:id', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
-    const { 
-      nombre, apellido, genero, documento_identidad, 
-      fecha_nacimiento, telefono, direccion 
-    } = req.body;
+    const { nombre, apellido, genero, documento_identidad, fecha_nacimiento, telefono, direccion } = req.body;
 
     const sql = `
       UPDATE feligreses 
@@ -103,33 +91,26 @@ router.put('/:id', authMiddleware, async (req, res) => {
       WHERE id = ? AND activo = 1
     `;
     
-    const params = [
-      nombre, apellido, genero, documento_identidad, 
-      fecha_nacimiento, telefono, direccion, id
-    ];
-
-    const [result] = await db.execute(sql, params);
+    const [result] = await db.execute(sql, [nombre, apellido, genero, documento_identidad, fecha_nacimiento, telefono, direccion, id]);
 
     if (result.affectedRows === 0) {
-      return res.status(404).json({ message: "Feligrés no encontrado o no se pudo actualizar." });
+      return res.status(404).json({ message: "Feligrés no encontrado." });
     }
-
     res.json({ message: "Feligrés actualizado correctamente." });
   } catch (error) {
     console.error("❌ Error en PUT feligreses:", error);
-    res.status(500).json({ message: "Error interno al actualizar el feligrés." });
+    res.status(500).json({ message: "Error al actualizar." });
   }
 });
 
 // ========================================================================
-// 5. ELIMINAR FELIGRÉS (Soft Delete / Baja lógica)
+// 5. ELIMINAR FELIGRÉS (Baja lógica)
 // ========================================================================
 router.delete('/:id', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
     
-    // En lugar de borrarlo de la base de datos (DELETE FROM), 
-    // lo marcamos como inactivo para no romper el historial.
+    // Usamos el UPDATE para inactivar en lugar de borrar el registro
     const sql = `UPDATE feligreses SET activo = 0 WHERE id = ?`;
     const [result] = await db.execute(sql, [id]);
 
@@ -140,7 +121,7 @@ router.delete('/:id', authMiddleware, async (req, res) => {
     res.json({ message: "Feligrés eliminado correctamente." });
   } catch (error) {
     console.error("❌ Error en DELETE feligreses:", error);
-    res.status(500).json({ message: "Error interno al eliminar el feligrés." });
+    res.status(500).json({ message: "Error al eliminar." });
   }
 });
 
