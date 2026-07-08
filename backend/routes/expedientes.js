@@ -4,11 +4,12 @@ const router = express.Router();
 const authMiddleware = require('../middleware/authMiddleware');
 const db = require('../db');
 
-// 1. OBTENER EXPEDIENTES DE LA PARROQUIA DEL USUARIO
+// ========================================================================
+// 1. OBTENER EXPEDIENTES (Con cálculo dinámico de requisitos)
+// ========================================================================
 router.get('/', authMiddleware, async (req, res) => {
   try {
     const parroquia_id = req.user.parroquia_id || 1;
-    // Agregamos subconsultas para verificar sacramentos y contar intervinientes
     const sql = `
       SELECT e.*, 
         n.nombre AS novio_nombre, n.apellido AS novio_apellido,
@@ -34,7 +35,9 @@ router.get('/', authMiddleware, async (req, res) => {
   }
 });
 
-// 2. CREAR NUEVO EXPEDIENTE
+// ========================================================================
+// 2. CREAR NUEVO EXPEDIENTE CON VALIDACIONES ESTRICTAS
+// ========================================================================
 router.post('/', authMiddleware, async (req, res) => {
   try {
     const { novio_id, novia_id, fecha_boda_programada } = req.body;
@@ -74,7 +77,9 @@ router.post('/', authMiddleware, async (req, res) => {
   }
 });
 
-// 3. ACTUALIZAR ESTADO
+// ========================================================================
+// 3. ACTUALIZAR ESTADO DE EXPEDIENTE
+// ========================================================================
 router.put('/:id/estado', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
@@ -87,36 +92,31 @@ router.put('/:id/estado', authMiddleware, async (req, res) => {
   }
 });
 
-// 4. GUARDAR INTERVINIENTES (con transacción)
+// ========================================================================
+// 4. GUARDAR INTERVINIENTES (Manejo robusto de array y transacciones)
+// ========================================================================
 router.post('/:id/intervinientes', authMiddleware, async (req, res) => {
   const connection = await db.getConnection();
   try {
     const { id } = req.params;
     
-    // Extraemos los datos flexibilizando el formato
     let intervinientes = req.body;
-    
-    // Si por alguna razón llega envuelto en un objeto { intervinientes: [...] }, lo extraemos
     if (intervinientes && intervinientes.intervinientes) {
         intervinientes = intervinientes.intervinientes;
     }
 
     if (!Array.isArray(intervinientes)) {
-      console.log("Datos recibidos (inválidos):", req.body);
       return res.status(400).json({ message: "Formato inválido de intervinientes. Se esperaba un arreglo." });
     }
 
     await connection.beginTransaction();
-    
-    // Limpiamos los anteriores
     await connection.execute('DELETE FROM expedientes_intervinientes WHERE expediente_id = ?', [id]);
-
-    // Insertamos los nuevos
+    
     const sql = `INSERT INTO expedientes_intervinientes (expediente_id, feligres_id, rol, activo) VALUES (?, ?, ?, 1)`;
     for (const item of intervinientes) {
       await connection.execute(sql, [id, item.feligres_id, item.rol]);
     }
-
+    
     await connection.commit();
     res.json({ message: "Intervinientes guardados correctamente." });
   } catch (error) {
@@ -128,25 +128,52 @@ router.post('/:id/intervinientes', authMiddleware, async (req, res) => {
   }
 });
 
-// 5. OBTENER INTERVINIENTES (Para el formulario Frontend)
+// ========================================================================
+// 5. OBTENER INTERVINIENTES Y SUGERENCIAS DE BAUTIZOS
+// ========================================================================
 router.get('/:id/intervinientes', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
-    const sql = `
+    
+    // Intervinientes explícitamente guardados
+    const sqlGuardados = `
       SELECT i.rol, i.feligres_id, f.nombre, f.apellido 
       FROM expedientes_intervinientes i
       JOIN feligreses f ON i.feligres_id = f.id
       WHERE i.expediente_id = ? AND i.activo = 1
     `;
-    const [rows] = await db.execute(sql, [id]);
-    res.json(rows);
+    const [guardados] = await db.execute(sqlGuardados, [id]);
+
+    // Búsqueda de padres en tabla de bautizos para sugerencias
+    const [expRows] = await db.execute('SELECT novio_id, novia_id FROM expedientes_matrimoniales WHERE id = ?', [id]);
+    let sugerencias = {};
+
+    if (expRows.length > 0) {
+      const exp = expRows[0];
+      
+      const [bNovio] = await db.execute('SELECT padre_id, madre_id FROM bautizos WHERE feligres_id = ? AND activo = 1 LIMIT 1', [exp.novio_id]);
+      if (bNovio.length > 0) {
+         if (bNovio[0].padre_id) sugerencias.padre_novio = bNovio[0].padre_id;
+         if (bNovio[0].madre_id) sugerencias.madre_novio = bNovio[0].madre_id;
+      }
+      
+      const [bNovia] = await db.execute('SELECT padre_id, madre_id FROM bautizos WHERE feligres_id = ? AND activo = 1 LIMIT 1', [exp.novia_id]);
+      if (bNovia.length > 0) {
+         if (bNovia[0].padre_id) sugerencias.padre_novia = bNovia[0].padre_id;
+         if (bNovia[0].madre_id) sugerencias.madre_novia = bNovia[0].madre_id;
+      }
+    }
+
+    res.json({ guardados, sugerencias });
   } catch (error) {
     console.error("❌ Error al obtener intervinientes:", error);
     res.status(500).json({ message: "Error al obtener intervinientes." });
   }
 });
 
-// 6. TRASLADAR EXPEDIENTE
+// ========================================================================
+// 6. TRASLADAR EXPEDIENTE (EXHORTO)
+// ========================================================================
 router.put('/:id/trasladar', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
@@ -159,13 +186,15 @@ router.put('/:id/trasladar', authMiddleware, async (req, res) => {
   }
 });
 
-// 7. OBTENER DATOS OFICIALES PARA IMPRESIÓN DEL EXPEDIENTE
+// ========================================================================
+// 7. OBTENER DATOS COMPLETOS PARA IMPRESIÓN OFICIAL DEL EXPEDIENTE
+// ========================================================================
 router.get('/:id/impresion', authMiddleware, async (req, res) => {
   const connection = await db.getConnection();
   try {
     const { id } = req.params;
 
-    // A) Obtener Expediente, Parroquia y Novios
+    // Expediente, Parroquia y Novios
     const sqlBase = `
       SELECT e.id AS expediente_id, e.fecha_boda_programada, e.creado_en AS fecha_registro,
              p.nombre AS parroquia_nombre, p.diocesis, p.id AS parroquia_id,
@@ -181,7 +210,7 @@ router.get('/:id/impresion', authMiddleware, async (req, res) => {
     if (baseRows.length === 0) return res.status(404).json({ message: "Expediente no encontrado." });
     let data = baseRows[0];
 
-    // B) Obtener Párroco asignado
+    // Párroco asignado a la parroquia del expediente
     const [sacerdoteRows] = await connection.execute(`
       SELECT s.nombre, s.apellido FROM asignaciones_sacerdotes a 
       JOIN sacerdotes s ON a.sacerdote_id = s.id 
@@ -189,7 +218,7 @@ router.get('/:id/impresion', authMiddleware, async (req, res) => {
     `, [data.parroquia_id]);
     data.parroco = sacerdoteRows.length > 0 ? `${sacerdoteRows[0].nombre} ${sacerdoteRows[0].apellido}` : '______________________';
 
-    // C) Función para obtener sacramentos (Bautizo y Confirmación)
+    // Helper para sacramentos
     const getSacramentos = async (feligresId) => {
       const sac = { bautizo_fecha: null, bautizo_parroquia: null, conf_fecha: null, conf_parroquia: null };
       const [b] = await connection.execute(`SELECT b.fecha_bautizo as fecha, p.nombre as parroquia FROM bautizos b JOIN parroquias p ON b.parroquia_id = p.id WHERE b.feligres_id = ? AND b.activo=1 LIMIT 1`, [feligresId]);
@@ -203,7 +232,7 @@ router.get('/:id/impresion', authMiddleware, async (req, res) => {
     data.sacramentos_novio = await getSacramentos(data.novio_id);
     data.sacramentos_novia = await getSacramentos(data.novia_id);
 
-    // D) Obtener Intervinientes y validar si son padrinos para traer fecha de matrimonio
+    // Intervinientes con validación de matrimonio para padrinos
     const [intervinientesRows] = await connection.execute(`
       SELECT i.rol, f.nombre, f.apellido,
         (SELECT fecha_matrimonio FROM matrimonios WHERE (novio_id = f.id OR novia_id = f.id) AND activo = 1 LIMIT 1) AS fecha_matrimonio_padrinos
