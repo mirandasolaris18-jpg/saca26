@@ -333,12 +333,19 @@ export default function AperturaExpediente({ onVolver, user }) {
                               </div>
                             )}
 
-                            {exp.estado_tramite === 'En Curso' && (
-                              <button disabled className="w-full px-2 py-1 bg-gray-300 text-gray-500 text-xs font-bold rounded cursor-not-allowed">
-                                🖨️ Imprimir (Incompleto)
-                              </button>
-                            )}
-                            
+                         {exp.estado_tramite === 'En Curso' && (
+  <button 
+    onClick={() => { 
+      setExpedienteSeleccionado(exp); 
+      cargarIntervinientesDB(exp.id); 
+      setView('intervinientes'); 
+    }} 
+    className="w-full px-2 py-1 bg-gray-200 text-gray-600 border border-gray-400 text-xs font-bold rounded hover:bg-gray-300 transition-colors"
+    title="Haga clic para completar los datos faltantes"
+  >
+    🖨️ Imprimir (Incompleto)
+  </button>
+)}
                             <div className="flex justify-center gap-2 pt-1 border-t">
                               {exp.estado_tramite !== 'Cancelado' && exp.estado_tramite !== 'Trasladado' && (
                                 <>

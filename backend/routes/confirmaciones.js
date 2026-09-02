@@ -11,10 +11,9 @@ router.post('/', authMiddleware, async (req, res) => {
   try {
     const {
       feligres_id, padrino_id, madrina_id, fecha_confirmacion, 
-      sacerdote_id, numero_libro, pagina_libro, seccion_libro // 🛠️ Quitamos parroquia_id de aquí
+      sacerdote_id, numero_libro, pagina_libro, seccion_libro
     } = req.body;
 
-    // 🛠️ NUEVO: Extraemos la parroquia directamente del token del usuario logueado
     const parroquia_id = req.user.parroquia_id;
 
     if (!parroquia_id) {
@@ -25,23 +24,19 @@ router.post('/', authMiddleware, async (req, res) => {
       return res.status(400).json({ message: "Todos los datos de la celebración y del libro son obligatorios." });
     }
 
-    // 🛡️ REGLA: Exigir al menos 1 Padrino o Madrina
     if (!padrino_id && !madrina_id) {
       return res.status(400).json({ message: "Debe registrar al menos un Padrino o una Madrina." });
     }
 
-    // 🛡️ REGLA: El confirmado no puede ser su propio padrino/madrina
     if (feligres_id == padrino_id || feligres_id == madrina_id) {
       return res.status(400).json({ message: "Datos ilógicos: El feligrés no puede ser su propio padrino o madrina." });
     }
 
-    // 🛡️ REGLA: Validación de Duplicados
     const [yaConfirmado] = await db.query('SELECT id FROM confirmaciones WHERE feligres_id = ? AND activo = 1', [feligres_id]);
     if (yaConfirmado.length > 0) {
       return res.status(409).json({ message: "❌ Este feligrés ya cuenta con un acta de confirmación registrada." });
     }
 
-    // 🛡️ REGLA CANÓNICA: Validar Bautizo de los padrinos seleccionados
     if (padrino_id) {
       const [padrinoBautizado] = await db.query('SELECT id FROM bautizos WHERE feligres_id = ?', [padrino_id]);
       if (padrinoBautizado.length === 0) {
@@ -56,7 +51,6 @@ router.post('/', authMiddleware, async (req, res) => {
       }
     }
 
-    // --- INSERCIÓN ---
     const sql = `
       INSERT INTO confirmaciones 
         (feligres_id, padrino_id, madrina_id, fecha_confirmacion, parroquia_id, sacerdote_id, numero_libro, pagina_libro, seccion_libro, creado_por) 
@@ -70,7 +64,7 @@ router.post('/', authMiddleware, async (req, res) => {
       padrino_id || null, 
       madrina_id || null, 
       fecha_confirmacion, 
-      parroquia_id, // 🛠️ Usamos el parroquia_id del usuario logueado
+      parroquia_id,
       sacerdote_id, 
       numero_libro, 
       pagina_libro, 
@@ -95,14 +89,18 @@ router.get('/recursos', authMiddleware, async (req, res) => {
     const [parroquias] = await db.query("SELECT id, nombre FROM parroquias WHERE activo = 1");
     const [sacerdotes] = await db.query("SELECT id, CONCAT(nombre, ' ', apellido) AS nombre_completo FROM sacerdotes WHERE activo = 1");
     
-    // 🛠️ CORREGIDO: Aquí es donde va el LEFT JOIN para saber si ya tienen la confirmación
+    // Se añade f.nombre aislado y los JOINs a bautizos para inyectarlos en el React al momento de crear un acta nueva
     const sqlFeligreses = `
-      SELECT f.id, CONCAT(f.apellido, ' ', f.nombre) AS nombre_completo, f.documento_identidad,
+      SELECT f.id, f.nombre, CONCAT(f.apellido, ' ', f.nombre) AS nombre_completo, f.documento_identidad,
              c.fecha_confirmacion AS fecha_sacramento, p.nombre AS parroquia_sacramento,
-             IF(c.id IS NOT NULL, 1, 0) AS ya_lo_tiene
+             IF(c.id IS NOT NULL, 1, 0) AS ya_lo_tiene,
+             b.fecha_bautizo,
+             pb.nombre AS parroquia_bautizo
       FROM feligreses f
       LEFT JOIN confirmaciones c ON f.id = c.feligres_id
       LEFT JOIN parroquias p ON c.parroquia_id = p.id
+      LEFT JOIN bautizos b ON f.id = b.feligres_id
+      LEFT JOIN parroquias pb ON b.parroquia_id = pb.id
       WHERE f.activo = 1 ORDER BY f.apellido ASC
     `;
     const [feligreses] = await db.query(sqlFeligreses);
@@ -115,28 +113,31 @@ router.get('/recursos', authMiddleware, async (req, res) => {
 });
 
 // ==========================================
-// 3. OBTENER LISTA DE CONFIRMACIONES (CON FILTRO DE JERARQUÍA)
+// 3. OBTENER LISTA DE CONFIRMACIONES 
 // ==========================================
 router.get('/', authMiddleware, async (req, res) => {
   try {
     const { buscar } = req.query;
-    const { nivel_jerarquico, parroquia_id } = req.user; // 🛠️ Extraemos datos del token
+    const { nivel_jerarquico, parroquia_id } = req.user; 
     
-    // 🛠️ CORREGIDO: Restaurada la consulta para que la tabla del historial funcione
+    // Se integran los LEFT JOIN hacia la tabla de bautizos para alimentar la "Reimpresión"
     let sql = `
       SELECT c.*, 
              f.nombre AS confirmado_nombre, f.apellido AS confirmado_apellido,
              p.nombre AS parroquia_nombre,
-             CONCAT(s.nombre, ' ', s.apellido) AS sacerdote_nombre
+             CONCAT(s.nombre, ' ', s.apellido) AS sacerdote_nombre,
+             b.fecha_bautizo,
+             pb.nombre AS parroquia_bautizo
       FROM confirmaciones c
       JOIN feligreses f ON c.feligres_id = f.id
       JOIN parroquias p ON c.parroquia_id = p.id
       JOIN sacerdotes s ON c.sacerdote_id = s.id
+      LEFT JOIN bautizos b ON f.id = b.feligres_id
+      LEFT JOIN parroquias pb ON b.parroquia_id = pb.id
       WHERE c.activo = 1
     `;
     const params = [];
 
-    // 🛠️ FILTRO DE JERARQUÍA: Si es Nivel 3 (Sacerdote/Secretaria), solo ve su parroquia
     if (nivel_jerarquico === 3) {
       sql += ` AND c.parroquia_id = ?`;
       params.push(parroquia_id);

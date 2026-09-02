@@ -2,6 +2,37 @@ import React, { useState, useEffect } from "react";
 import { fetchRecursosConfirmacion, createConfirmacion, fetchConfirmaciones } from "../services/confirmacionesService";
 import { jsPDF } from "jspdf";
 
+// --- UTILIDADES PARA FECHAS LITERALES ---
+const numALetrasDia = (num) => {
+  const dias = ["", "uno", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve", "diez", "once", "doce", "trece", "catorce", "quince", "dieciséis", "diecisiete", "dieciocho", "diecinueve", "veinte", "veintiuno", "veintidós", "veintitrés", "veinticuatro", "veinticinco", "veintiséis", "veintisiete", "veintiocho", "veintinueve", "treinta", "treinta y uno"];
+  return dias[parseInt(num, 10)] || num;
+};
+
+const numALetrasAno = (num) => {
+  const anos = { 2020: "dos mil veinte", 2021: "dos mil veintiuno", 2022: "dos mil veintidós", 2023: "dos mil veintitrés", 2024: "dos mil veinticuatro", 2025: "dos mil veinticinco", 2026: "dos mil veintiséis", 2027: "dos mil veintisiete", 2028: "dos mil veintiocho", 2029: "dos mil veintinueve", 2030: "dos mil treinta" };
+  return anos[parseInt(num, 10)] || num;
+};
+
+const formatearFechaLiteral = (fechaStr) => {
+  if (!fechaStr) return { diaLit: "___", mesLit: "___", anoLit: "___" };
+  try {
+    const soloFecha = fechaStr.split('T')[0];
+    const [year, month, day] = soloFecha.split('-');
+    
+    if (!year || !month || !day) return { diaLit: "___", mesLit: "___", anoLit: "___" };
+    
+    const fecha = new Date(year, month - 1, day);
+    
+    const diaLit = numALetrasDia(fecha.getDate());
+    const mesLit = fecha.toLocaleDateString('es-ES', { month: 'long' });
+    const anoLit = numALetrasAno(fecha.getFullYear());
+    
+    return { diaLit, mesLit, anoLit };
+  } catch (error) {
+    return { diaLit: "___", mesLit: "___", anoLit: "___" };
+  }
+};
+
 export default function Confirmaciones({ onVolver }) {
   const [mostrarModal, setMostrarModal] = useState(false);
   const [confirmacionExitosa, setConfirmacionExitosa] = useState(false);
@@ -11,7 +42,6 @@ export default function Confirmaciones({ onVolver }) {
   const [busqueda, setBusqueda] = useState("");
   const [recursos, setRecursos] = useState({ parroquias: [], sacerdotes: [], feligreses: [] });
 
-  // 🛠️ CORREGIDO: Eliminamos parroquia_id del estado inicial
   const [form, setForm] = useState({
     feligres_id: "", padrino_id: "", madrina_id: "", fecha_confirmacion: "", 
     sacerdote_id: "", numero_libro: "", pagina_libro: "", seccion_libro: ""
@@ -37,7 +67,6 @@ export default function Confirmaciones({ onVolver }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    // 🛡️ Validaciones Locales Actualizadas
     if (!form.padrino_id && !form.madrina_id) {
       alert("❌ Por favor seleccione al menos un Padrino o una Madrina."); return;
     }
@@ -49,37 +78,50 @@ export default function Confirmaciones({ onVolver }) {
     try {
       await createConfirmacion(form);
       
-      const nombreConfirmado = recursos.feligreses.find(f => f.id == form.feligres_id)?.nombre_completo || "";
-      const nombrePadrino = form.padrino_id ? recursos.feligreses.find(f => f.id == form.padrino_id)?.nombre_completo : null;
-      const nombreMadrina = form.madrina_id ? recursos.feligreses.find(f => f.id == form.madrina_id)?.nombre_completo : null;
+      const feligresObj = recursos.feligreses.find(f => f.id == form.feligres_id);
+      const nombreConfirmadoCompleto = feligresObj?.nombre_completo || "";
+      const nombreConfirmadoSolo = feligresObj?.nombre || "";
       
-      // Unimos los nombres si hay dos, o mostramos uno solo
-      const arrSponsors = [];
-      if (nombrePadrino) arrSponsors.push(nombrePadrino);
-      if (nombreMadrina) arrSponsors.push(nombreMadrina);
-      const sponsorFinal = arrSponsors.join(" y "); // "Padrino y Madrina"
+      // Ajuste: Buscar variaciones del nombre del campo de bautizo que pueda enviar tu BD
+      const parroquiaBautizo = feligresObj?.bautizo_parroquia || feligresObj?.parroquia_bautizo || "_________________";
+      const fechaBautizo = feligresObj?.bautizo_fecha || feligresObj?.fecha_bautizo || "";
 
-      // 🛠️ CORREGIDO: Extraemos al usuario actual para sacar el nombre de su parroquia
+      let nombreSponsor = "---";
+      let prefijoSponsor = "fue padrino";
+      if (form.padrino_id) {
+        nombreSponsor = recursos.feligreses.find(f => f.id == form.padrino_id)?.nombre_completo || "---";
+        prefijoSponsor = "fue padrino";
+      } else if (form.madrina_id) {
+        nombreSponsor = recursos.feligreses.find(f => f.id == form.madrina_id)?.nombre_completo || "---";
+        prefijoSponsor = "fue madrina";
+      }
+      
       const usuarioActual = JSON.parse(localStorage.getItem('usuario') || '{}');
       const nombreSacerdote = recursos.sacerdotes.find(s => s.id == form.sacerdote_id)?.nombre_completo || "";
+      
+      const numeroSerie = Math.floor(Math.random() * 10000).toString().padStart(5, '0');
 
       setDatosImpresion({
-        confirmado: nombreConfirmado,
-        sponsor: sponsorFinal,
-        // 🛠️ Asignamos la parroquia desde el localStorage
+        serie: numeroSerie,
+        confirmado_completo: nombreConfirmadoCompleto,
+        confirmado_nombre: nombreConfirmadoSolo,
+        parroquia_bautizo: parroquiaBautizo,
+        fecha_bautizo: fechaBautizo,
+        sponsor_nombre: nombreSponsor,
+        sponsor_prefijo: prefijoSponsor,
         parroquia: usuarioActual.parroquia_nombre || "Parroquia No Asignada",
         sacerdote: nombreSacerdote,
-        fecha: form.fecha_confirmacion,
+        fecha_confirmacion: form.fecha_confirmacion,
         libro: form.numero_libro,
         pagina: form.pagina_libro,
-        seccion: form.seccion_libro
+        seccion: form.seccion_libro,
+        obispo: "Mons. Krzysztof Bialasik"
       });
 
       setMostrarModal(false);
       setConfirmacionExitosa(true);
       cargarDatos();
       
-      // 🛠️ CORREGIDO: Quitamos parroquia_id del reinicio del formulario
       setForm({ feligres_id: "", padrino_id: "", madrina_id: "", fecha_confirmacion: "", sacerdote_id: "", numero_libro: "", pagina_libro: "", seccion_libro: "" });
     } catch (error) {
       alert(error.message); 
@@ -88,55 +130,120 @@ export default function Confirmaciones({ onVolver }) {
 
   const generarPDF = (datos) => {
     const doc = new jsPDF();
-    doc.setLineWidth(1); doc.rect(10, 10, 190, 277); doc.rect(12, 12, 186, 273);
-    
-    doc.setFontSize(24); doc.setFont("times", "bold"); doc.setTextColor(178, 34, 34); // Rojo oscuro
-    doc.text("CERTIFICADO DE CONFIRMACIÓN", 105, 40, { align: "center" });
-    
-    doc.setFontSize(14); doc.setTextColor(0, 0, 0);
-    doc.text(datos.parroquia.toUpperCase(), 105, 55, { align: "center" });
 
-    doc.setFontSize(12); doc.setFont("times", "normal");
-    doc.text(`Por el presente certificamos que el día ${datos.fecha},`, 105, 80, { align: "center" });
-    doc.text("recibió el Sacramento de la Confirmación:", 105, 90, { align: "center" });
+    // --- ENCABEZADO ---
+    doc.setDrawColor(0);
+    doc.setLineWidth(0.5);
+    doc.rect(15, 15, 25, 30);
+    doc.setFontSize(8);
+    doc.text("LOGO", 27.5, 30, { align: "center" });
+
+    doc.setFontSize(14);
+    doc.setFont("times", "bold");
+    doc.text("DIÓCESIS DE ORURO BOLIVIA", 105, 25, { align: "center" });
+
+    doc.setFontSize(20);
+    doc.text("CERTIFICADO DE CONFIRMACIÓN", 105, 35, { align: "center" });
+
+    doc.setFontSize(12);
+    doc.setTextColor(200, 0, 0); 
+    doc.text(`N° ${datos.serie || "00000"}`, 195, 25, { align: "right" });
+    doc.setTextColor(0, 0, 0); 
+
+    // --- DATOS DEL PÁRROCO ---
+    doc.setFont("times", "normal");
+    doc.setFontSize(12);
+    doc.text(`IGLESIA PARROQUIAL DE ${datos.parroquia.toUpperCase()}`, 15, 60);
+    doc.text(`El presbítero ${datos.sacerdote}, de la mencionada parroquia:`, 15, 70);
+
+    // --- CERTIFICACIÓN ---
+    doc.setFont("times", "bold");
+    doc.text("CERTIFICA:", 15, 85);
     
-    doc.setFontSize(22); doc.setFont("times", "bold");
-    doc.text(datos.confirmado.toUpperCase(), 105, 110, { align: "center" });
+    doc.setFont("times", "normal");
+    doc.text(`Que en el libro ${datos.libro} en la página N° ${datos.pagina} se halla inscrita la partida de confirmación de:`, 15, 95);
 
-    doc.setFontSize(12); doc.setFont("times", "normal");
-    doc.text(`Padrino/Madrina:  ${datos.sponsor}`, 30, 140);
-    doc.text(`Ministro:              ${datos.sacerdote}`, 30, 155);
+    doc.setFontSize(18);
+    doc.setFont("times", "bold");
+    doc.text(datos.confirmado_completo.toUpperCase(), 105, 110, { align: "center" });
 
+    // --- CONVERSIÓN DE FECHAS ---
+    const confLit = formatearFechaLiteral(datos.fecha_confirmacion);
+    const bautLit = formatearFechaLiteral(datos.fecha_bautizo);
+
+    // --- PÁRRAFO PRINCIPAL (JUSTIFICADO Y DOBLE INTERLINEADO) ---
+    doc.setFontSize(12);
+    doc.setFont("times", "normal");
+    
+    const parrafo = `En la parroquia de: ${datos.parroquia}, el día ${confLit.diaLit} del mes de: ${confLit.mesLit}, del año: ${confLit.anoLit}, yo el párroco confirmé a: ${datos.confirmado_nombre}. Quien fue bautizado(a) en la parroquia de: ${datos.parroquia_bautizo}, el día ${bautLit.diaLit} de ${bautLit.mesLit} de ${bautLit.anoLit}, ${datos.sponsor_prefijo} ${datos.sponsor_nombre}, de lo que como párroco doy fe ${datos.obispo}.`;
+
+    const yParrafo = 125;
+    
+    doc.text(parrafo, 15, yParrafo, { 
+      maxWidth: 180, 
+      align: "justify", 
+      lineHeightFactor: 2.0 
+    });
+
+    // --- COPIA FIEL Y FECHA ---
+    const lineasParrafo = doc.splitTextToSize(parrafo, 180);
+    const yCopia = yParrafo + (lineasParrafo.length * 8.5) + 15; 
+    
+    doc.text("Es copia fiel del original.", 105, yCopia, { align: "center" });
+
+    const hoy = new Date();
+    const mesHoyLit = hoy.toLocaleDateString('es-ES', { month: 'long' });
+    const fechaImpresion = `Oruro, ${hoy.getDate()} de ${mesHoyLit} de ${hoy.getFullYear()}`;
+    doc.text(fechaImpresion, 105, yCopia + 10, { align: "center" });
+
+    // --- FIRMA ---
+    const yFirma = yCopia + 45;
+    doc.setLineWidth(0.5);
+    doc.line(75, yFirma, 135, yFirma);
+    doc.setFont("times", "bold");
+    doc.text("Firma y Sello del Sacerdote", 105, yFirma + 5, { align: "center" });
+
+    // --- PIE DE PÁGINA ---
+    doc.setFontSize(9);
     doc.setFont("times", "italic");
-    doc.text(`Registrado en el Libro N° ${datos.libro}, Página ${datos.pagina}, Sección ${datos.seccion}.`, 105, 200, { align: "center" });
-
-    doc.line(60, 240, 150, 240);
-    doc.setFont("times", "normal"); doc.text("Firma del Obispo / Párroco", 105, 250, { align: "center" });
+    doc.setTextColor(100, 100, 100);
+    doc.text("Propiedad exclusiva de la Diócesis de Oruro. Prohibida su alteración a estos datos oficiales.", 105, 285, { align: "center" });
     
-    doc.save(`Certificado_Confirmacion_${datos.confirmado.replace(/\s+/g, '_')}.pdf`);
+    doc.save(`Certificado_Confirmacion_${datos.confirmado_completo.replace(/\s+/g, '_')}.pdf`);
+  };
+
+  const handleImprimirReciente = () => {
+    if (datosImpresion) {
+      generarPDF(datosImpresion);
+      setConfirmacionExitosa(false);
+    }
   };
 
   const handleReimprimirTabla = (c) => {
-    generarPDF({
-      confirmado: `${c.confirmado_apellido} ${c.confirmado_nombre}`,
-      parroquia: c.parroquia_nombre,
-      sacerdote: c.sacerdote_nombre,
-      fecha: c.fecha_confirmacion,
+    // Al reimprimir desde la tabla, buscamos las variables extraídas de la DB
+    const datosAdaptados = {
+      serie: "RE-" + c.id,
+      confirmado_completo: `${c.confirmado_apellido} ${c.confirmado_nombre}`,
+      confirmado_nombre: c.confirmado_nombre,
+      parroquia_bautizo: c.bautizo_parroquia || c.parroquia_bautizo || "_________________",
+      fecha_bautizo: c.bautizo_fecha || c.fecha_bautizo || "",
+      sponsor_nombre: "Registrado en libro",
+      sponsor_prefijo: "fue padrino/madrina",
+      parroquia: c.parroquia_nombre || "",
+      sacerdote: c.sacerdote_nombre || "",
+      fecha_confirmacion: c.fecha_confirmacion,
       libro: c.numero_libro,
       pagina: c.pagina_libro,
       seccion: c.seccion_libro,
-      sponsor: "Registrado en sistema"
-    });
+      obispo: "Mons. Krzysztof Bialasik"
+    };
+    generarPDF(datosAdaptados);
   };
 
-  // 🛠️ NUEVA FUNCIÓN: Formatea el texto de los feligreses con emojis e info extra
   const renderOpcionFeligres = (f, esPrincipal = false) => {
     if (f.ya_lo_tiene === 1) {
-      // Formateamos la fecha si existe (evita errores si es null)
       const fechaFormat = f.fecha_sacramento ? new Date(f.fecha_sacramento).toLocaleDateString() : '';
       const texto = `🔴 [YA CONFIRMADO] ${f.nombre_completo} - ${f.parroquia_sacramento} (${fechaFormat})`;
-      
-      // Si es el confirmado principal, bloqueamos la opción
       return <option key={f.id} value={f.id} disabled={esPrincipal}>{texto}</option>;
     }
     return <option key={f.id} value={f.id}>🟢 {f.nombre_completo} {f.documento_identidad ? `(CI: ${f.documento_identidad})` : ''}</option>;
@@ -150,7 +257,7 @@ export default function Confirmaciones({ onVolver }) {
           <h2 className="text-2xl font-bold text-gray-900">Módulo de Confirmaciones</h2>
         </div>
         <button onClick={() => setMostrarModal(true)} className="px-4 py-2 bg-red-700 text-white font-semibold rounded-lg text-sm hover:bg-red-800">
-          + Registrar Nueva Acta
+          + Nuevo Registro
         </button>
       </div>
 
@@ -160,54 +267,57 @@ export default function Confirmaciones({ onVolver }) {
         value={busqueda} onChange={(e) => { setBusqueda(e.target.value); cargarDatos(e.target.value); }}
       />
 
-      <table className="w-full text-sm text-left border border-gray-200">
-        <thead className="bg-gray-100 uppercase text-xs font-bold text-gray-700">
-          <tr><th className="p-3">Confirmado</th><th className="p-3">Fecha</th><th className="p-3 text-center">Acciones</th></tr>
-        </thead>
-        <tbody>
-          {listaConfirmaciones.map(c => (
-            <tr key={c.id} className="border-b hover:bg-gray-50">
-              <td className="p-3 font-medium">{c.confirmado_apellido} {c.confirmado_nombre}</td>
-              <td className="p-3">{c.fecha_confirmacion}</td>
-              <td className="p-3 text-center">
-                <button onClick={() => handleReimprimirTabla(c)} className="text-blue-600 font-bold hover:underline">🖨️ Reimprimir</button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm text-left border border-gray-200">
+          <thead className="bg-gray-100 uppercase text-xs font-bold text-gray-700">
+            <tr><th className="p-3">Confirmado</th><th className="p-3">Fecha</th><th className="p-3 text-center">Acciones</th></tr>
+          </thead>
+          <tbody>
+            {listaConfirmaciones.length > 0 ? (
+              listaConfirmaciones.map(c => (
+                <tr key={c.id} className="border-b hover:bg-gray-50">
+                  <td className="p-3 font-medium">{c.confirmado_apellido} {c.confirmado_nombre}</td>
+                  <td className="p-3">{c.fecha_confirmacion}</td>
+                  <td className="p-3 text-center">
+                    <button onClick={() => handleReimprimirTabla(c)} className="text-blue-600 font-bold hover:underline">🖨️ Reimprimir</button>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr><td colSpan="3" className="p-4 text-center text-gray-500">No se encontraron registros.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
 
       {mostrarModal && (
         <div className="fixed top-0 left-0 w-full h-full bg-black/50 flex justify-center items-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full p-6 relative max-h-[90vh] overflow-y-auto">
-            <h3 className="text-xl font-bold text-red-800 mb-4 border-b pb-2">Nueva Acta de Confirmación</h3>
+            <h3 className="text-xl font-bold text-red-800 mb-4 border-b pb-2">Nuevo registro de Confirmación</h3>
             
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="bg-red-50 p-3 rounded-lg border border-red-100">
                 <label className="block text-xs font-bold text-red-800 uppercase mb-1">Feligrés a Confirmar *</label>
                 <select name="feligres_id" required value={form.feligres_id} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white">
                   <option value="">-- Seleccionar Feligrés --</option>
-                  {/* 🛠️ APLICADO: Bloquea a los que ya están confirmados */}
                   {recursos.feligreses.map(f => renderOpcionFeligres(f, true))}
                 </select>
               </div>
 
               <div className="p-3 rounded-lg border border-gray-200 bg-gray-50">
-                <p className="text-xs text-gray-500 mb-2 italic">⚠️ Seleccione al menos a uno (Padrino o Madrina). El seleccionado DEBE estar bautizado en el sistema.</p>
+                <p className="text-xs text-gray-500 mb-2 italic">⚠️ Seleccione solo un Padrino o una Madrina.</p>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Padrino</label>
-                    <select name="padrino_id" value={form.padrino_id} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white">
+                    <select name="padrino_id" value={form.padrino_id} onChange={handleChange} disabled={form.madrina_id !== ""} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white disabled:bg-gray-200">
                       <option value="">-- No registra --</option>
-                      {/* 🛠️ APLICADO: No bloquea a los que ya están confirmados (pueden ser padrinos) */}
                       {recursos.feligreses.map(f => renderOpcionFeligres(f, false))}
                     </select>
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Madrina</label>
-                    <select name="madrina_id" value={form.madrina_id} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white">
+                    <select name="madrina_id" value={form.madrina_id} onChange={handleChange} disabled={form.padrino_id !== ""} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white disabled:bg-gray-200">
                       <option value="">-- No registra --</option>
-                      {/* 🛠️ APLICADO: No bloquea a los que ya están confirmados (pueden ser padrinos) */}
                       {recursos.feligreses.map(f => renderOpcionFeligres(f, false))}
                     </select>
                   </div>
@@ -258,7 +368,7 @@ export default function Confirmaciones({ onVolver }) {
             <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-3xl mx-auto mb-4">✅</div>
             <h3 className="text-xl font-bold text-gray-900 mb-2">¡Acta Registrada!</h3>
             <div className="flex flex-col gap-3 mt-4">
-              <button onClick={() => { generarPDF(datosImpresion); setConfirmacionExitosa(false); }} className="w-full py-3 bg-blue-600 text-white font-bold rounded-lg shadow-md">🖨️ Imprimir Certificado</button>
+              <button onClick={handleImprimirReciente} className="w-full py-3 bg-blue-600 text-white font-bold rounded-lg shadow-md">🖨️ Imprimir Certificado</button>
               <button onClick={() => setConfirmacionExitosa(false)} className="w-full py-2 bg-gray-100 font-semibold rounded-lg">Cerrar</button>
             </div>
           </div>

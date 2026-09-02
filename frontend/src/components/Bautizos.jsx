@@ -2,12 +2,44 @@ import React, { useState, useEffect } from "react";
 import { fetchRecursosBautizo, createBautizo, fetchBautizos } from "../services/bautizosService";
 import { jsPDF } from "jspdf"; 
 
+// --- UTILIDADES PARA FECHAS LITERALES ---
+const numALetrasDia = (num) => {
+  const dias = ["", "uno", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve", "diez", "once", "doce", "trece", "catorce", "quince", "dieciséis", "diecisiete", "dieciocho", "diecinueve", "veinte", "veintiuno", "veintidós", "veintitrés", "veinticuatro", "veinticinco", "veintiséis", "veintisiete", "veintiocho", "veintinueve", "treinta", "treinta y uno"];
+  return dias[parseInt(num, 10)] || num;
+};
+
+const numALetrasAno = (num) => {
+  const anos = { 2020: "dos mil veinte", 2021: "dos mil veintiuno", 2022: "dos mil veintidós", 2023: "dos mil veintitrés", 2024: "dos mil veinticuatro", 2025: "dos mil veinticinco", 2026: "dos mil veintiséis", 2027: "dos mil veintisiete", 2028: "dos mil veintiocho", 2029: "dos mil veintinueve", 2030: "dos mil treinta" };
+  return anos[parseInt(num, 10)] || num;
+};
+
+const formatearFechaLiteral = (fechaStr) => {
+  if (!fechaStr) return { diaLit: "___", mesLit: "___", anoLit: "___" };
+  try {
+    // 1. Limpiamos la hora por si viene en formato ISO (ej: 2024-10-15T00:00:00.000Z)
+    const soloFecha = fechaStr.split('T')[0];
+    const [year, month, day] = soloFecha.split('-');
+    
+    if (!year || !month || !day) return { diaLit: "___", mesLit: "___", anoLit: "___" };
+    
+    // 2. Creamos la fecha usando año, mes (0-indexado) y día
+    const fecha = new Date(year, month - 1, day);
+    
+    const diaLit = numALetrasDia(fecha.getDate());
+    const mesLit = fecha.toLocaleDateString('es-ES', { month: 'long' });
+    const anoLit = numALetrasAno(fecha.getFullYear());
+    
+    return { diaLit, mesLit, anoLit };
+  } catch (error) {
+    return { diaLit: "___", mesLit: "___", anoLit: "___" };
+  }
+};
+
 export default function Bautizos({ onVolver }) {
   const [mostrarModal, setMostrarModal] = useState(false);
   const [bautizoExitoso, setBautizoExitoso] = useState(false); 
   const [datosImpresion, setDatosImpresion] = useState(null); 
   
-  // Estados para la Tabla y Búsqueda
   const [listaBautizos, setListaBautizos] = useState([]);
   const [busqueda, setBusqueda] = useState("");
   
@@ -17,7 +49,6 @@ export default function Bautizos({ onVolver }) {
     feligreses: []
   });
 
-  // 🛠️ CORREGIDO: Eliminamos parroquia_id del estado
   const [form, setForm] = useState({
     feligres_id: "", padre_id: "", madre_id: "", padrino_id: "", madrina_id: "",
     fecha_bautizo: "", sacerdote_id: "", numero_libro: "", pagina_libro: "", seccion_libro: ""
@@ -30,7 +61,6 @@ export default function Bautizos({ onVolver }) {
 
       const hist = await fetchBautizos(termino);
       
-      // 🛡️ VALIDACIÓN DEFENSIVA PARA LA TABLA
       if (Array.isArray(hist)) {
         setListaBautizos(hist);
       } else if (hist && Array.isArray(hist.data)) {
@@ -57,7 +87,6 @@ export default function Bautizos({ onVolver }) {
 
     const { feligres_id, padre_id, madre_id, padrino_id, madrina_id } = form;
     
-    // 🛡️ VALIDACIÓN UNIVERSITARIA
     if (
       (padre_id && feligres_id === padre_id) ||
       (madre_id && feligres_id === madre_id) ||
@@ -71,35 +100,47 @@ export default function Bautizos({ onVolver }) {
     try {
       await createBautizo(form);
 
-      // Rescatar los nombres reales de las listas antes de limpiar el formulario para el PDF
-      const nombreBautizado = recursos.feligreses.find(f => f.id == form.feligres_id)?.nombre_completo || "";
+      // 1. Extraer los datos del bautizado
+      const feligresObj = recursos.feligreses.find(f => f.id == form.feligres_id);
+      const nombreBautizado = feligresObj?.nombre_completo || "";
+      const soloNombreBautizado = feligresObj?.nombre || "";
+      const ciudadNacimiento = feligresObj?.ciudad || "Oruro";
+      const fechaNacimiento = feligresObj?.fecha_nacimiento || "";
+
+      // 2. Extraer nombres del resto de involucrados
       const nombrePadre = recursos.feligreses.find(f => f.id == form.padre_id)?.nombre_completo || "---";
       const nombreMadre = recursos.feligreses.find(f => f.id == form.madre_id)?.nombre_completo || "---";
       const nombrePadrino = recursos.feligreses.find(f => f.id == form.padrino_id)?.nombre_completo || "---";
       const nombreMadrina = recursos.feligreses.find(f => f.id == form.madrina_id)?.nombre_completo || "---";
       const nombreSacerdote = recursos.sacerdotes.find(s => s.id == form.sacerdote_id)?.nombre_completo || "";
 
-      // 🛠️ CORREGIDO: Extraemos al usuario actual para sacar el nombre de su parroquia
       const usuarioActual = JSON.parse(localStorage.getItem('usuario') || '{}');
 
+      // ID Temporal o Simulado para el Número de Serie
+      const numeroSerie = Math.floor(Math.random() * 10000).toString().padStart(5, '0');
+
       setDatosImpresion({
-        bautizado: nombreBautizado,
+        serie: numeroSerie,
+        bautizado_completo: nombreBautizado,
+        bautizado_nombre: soloNombreBautizado,
+        ciudad_nacimiento: ciudadNacimiento,
+        fecha_nacimiento: fechaNacimiento,
         padre: nombrePadre,
         madre: nombreMadre,
         padrino: nombrePadrino,
         madrina: nombreMadrina,
-        // 🛠️ Asignamos la parroquia correctamente
         parroquia: usuarioActual.parroquia_nombre || "Parroquia No Asignada",
         sacerdote: nombreSacerdote,
-        fecha: form.fecha_bautizo,
+        fecha_bautizo: form.fecha_bautizo,
         libro: form.numero_libro,
         pagina: form.pagina_libro,
-        seccion: form.seccion_libro
+        seccion: form.seccion_libro,
+        obispo: "Mons. Krzysztof Bialasik"
       });
 
       setMostrarModal(false); 
       setBautizoExitoso(true); 
-      cargarDatos(); // Refrescamos la tabla automáticamente
+      cargarDatos(); 
       
       setForm({
         feligres_id: "", padre_id: "", madre_id: "", padrino_id: "", madrina_id: "",
@@ -110,61 +151,108 @@ export default function Bautizos({ onVolver }) {
     }
   };
 
-  // Función para imprimir PDF con diseño formal
   const generarPDF = (datos) => {
     const doc = new jsPDF();
 
-    // Bordes decorativos
-    doc.setLineWidth(1);
-    doc.rect(10, 10, 190, 277); 
-    doc.rect(12, 12, 186, 273); 
-
-    // Título Principal
-    doc.setFontSize(24);
-    doc.setFont("times", "bold");
-    doc.setTextColor(184, 134, 11); // Color dorado
-    doc.text("CERTIFICADO DE BAUTISMO", 105, 40, { align: "center" });
-
-    // Parroquia
-    doc.setFontSize(14);
-    doc.setTextColor(0, 0, 0);
-    doc.text(datos.parroquia.toUpperCase(), 105, 55, { align: "center" });
-
-    // Texto de introducción
-    doc.setFontSize(12);
-    doc.setFont("times", "normal");
-    doc.text(`Por el presente documento se certifica que el día ${datos.fecha},`, 105, 80, { align: "center" });
-    doc.text("recibió el Sacramento del Bautismo:", 105, 90, { align: "center" });
-
-    // Nombre del Bautizado
-    doc.setFontSize(22);
-    doc.setFont("times", "bold");
-    doc.text(datos.bautizado.toUpperCase(), 105, 110, { align: "center" });
-
-    // Datos Adicionales
-    doc.setFontSize(12);
-    doc.setFont("times", "normal");
-    doc.text(`Hijo/a de:  ${datos.padre}`, 30, 135);
-    doc.text(`Y de:         ${datos.madre}`, 30, 145);
-    doc.text(`Padrino:    ${datos.padrino}`, 30, 165);
-    doc.text(`Madrina:   ${datos.madrina}`, 30, 175);
-    doc.text(`Ministro:   ${datos.sacerdote}`, 30, 195);
-
-    // Datos del libro
-    doc.setFont("times", "italic");
-    doc.text(`Registrado en el Libro N° ${datos.libro}, Página ${datos.pagina}, Sección ${datos.seccion}.`, 105, 220, { align: "center" });
-
-    // Líneas de firma
+    // --- ENCABEZADO ---
+    // Placeholder para el Logo (Superior Izquierda)
+    doc.setDrawColor(0);
     doc.setLineWidth(0.5);
-    doc.line(60, 250, 150, 250);
-    doc.setFont("times", "normal");
-    doc.text("Firma del Párroco y Sello Parroquial", 105, 260, { align: "center" });
+    doc.rect(15, 15, 25, 30);
+    doc.setFontSize(8);
+    doc.text("LOGO", 27.5, 30, { align: "center" });
 
-    // Guardar el archivo
-    doc.save(`Certificado_Bautismo_${datos.bautizado.replace(/\s+/g, '_')}.pdf`);
+    // Título Central
+    doc.setFontSize(14);
+    doc.setFont("times", "bold");
+    doc.text("DIÓCESIS DE ORURO BOLIVIA", 105, 25, { align: "center" });
+
+    doc.setFontSize(20);
+    doc.text("CERTIFICADO DE BAUTISMO", 105, 35, { align: "center" });
+
+    // Número de Serie (Superior Derecha)
+    doc.setFontSize(12);
+    doc.setTextColor(200, 0, 0); // Rojo para número de serie
+    doc.text(`N° ${datos.serie || "00000"}`, 195, 25, { align: "right" });
+    doc.setTextColor(0, 0, 0); // Regresar a negro
+
+    // --- DATOS DEL PÁRROCO ---
+    doc.setFont("times", "normal");
+    doc.setFontSize(12);
+    doc.text(`IGLESIA PARROQUIAL DE ${datos.parroquia.toUpperCase()}`, 15, 60);
+    doc.text(`El presbítero ${datos.sacerdote}, de la mencionada parroquia:`, 15, 70);
+
+    // --- CERTIFICACIÓN ---
+    doc.setFont("times", "bold");
+    doc.text("CERTIFICA:", 15, 85);
+    
+    doc.setFont("times", "normal");
+    doc.text(`Que en el libro ${datos.libro} en la página N° ${datos.pagina} se halla inscrita la partida bautismal de:`, 15, 95);
+
+    // Nombre del Bautizado en grande
+    doc.setFontSize(18);
+    doc.setFont("times", "bold");
+    doc.text(datos.bautizado_completo.toUpperCase(), 105, 110, { align: "center" });
+
+    // --- CONVERSIÓN DE FECHAS A LITERALES ---
+    const bautizoLit = formatearFechaLiteral(datos.fecha_bautizo);
+    const nacLit = formatearFechaLiteral(datos.fecha_nacimiento);
+    
+    // --- LÓGICA DE PADRINOS ---
+    let textoPadrinos = "";
+    if (datos.padrino !== "---" && datos.madrina !== "---") {
+      textoPadrinos = `fueron padrinos ${datos.padrino} y ${datos.madrina}`;
+    } else if (datos.padrino !== "---") {
+      textoPadrinos = `fue padrino ${datos.padrino}`;
+    } else if (datos.madrina !== "---") {
+      textoPadrinos = `fue madrina ${datos.madrina}`;
+    } else {
+      textoPadrinos = "no se registraron padrinos";
+    }
+
+    // --- PÁRRAFO PRINCIPAL ---
+    doc.setFontSize(12);
+    doc.setFont("times", "normal");
+    
+    const parrafo = `En la parroquia de: ${datos.parroquia}, el día ${bautizoLit.diaLit} del mes de: ${bautizoLit.mesLit}, del año: ${bautizoLit.anoLit}, yo el párroco bauticé a: ${datos.bautizado_nombre}. Nacido(a) en: ${datos.ciudad_nacimiento}, el día ${nacLit.diaLit} de ${nacLit.mesLit} de ${nacLit.anoLit}, hijo(a) de ${datos.padre} y de ${datos.madre}, ${textoPadrinos}, de lo que como párroco doy fe ${datos.obispo}.`;
+
+    const yParrafo = 125;
+    
+    // Configuración para texto justificado con interlineado doble
+    doc.text(parrafo, 15, yParrafo, { 
+      maxWidth: 180, 
+      align: "justify", 
+      lineHeightFactor: 2.0 
+    });
+
+    // --- COPIA FIEL Y FECHA DE IMPRESIÓN ---
+    // Calculamos dónde terminó el párrafo para dar los saltos de línea correctos
+    const lineasParrafo = doc.splitTextToSize(parrafo, 180);
+    const yCopia = yParrafo + (lineasParrafo.length * 8.5) + 15; 
+    
+    doc.text("Es copia fiel del original.", 105, yCopia, { align: "center" });
+
+    const hoy = new Date();
+    const mesHoyLit = hoy.toLocaleDateString('es-ES', { month: 'long' });
+    const fechaImpresion = `Oruro, ${hoy.getDate()} de ${mesHoyLit} de ${hoy.getFullYear()}`;
+    doc.text(fechaImpresion, 105, yCopia + 10, { align: "center" });
+
+    // --- FIRMA ---
+    const yFirma = yCopia + 45;
+    doc.setLineWidth(0.5);
+    doc.line(75, yFirma, 135, yFirma);
+    doc.setFont("times", "bold");
+    doc.text("Firma y Sello del Sacerdote", 105, yFirma + 5, { align: "center" });
+
+    // --- PIE DE PÁGINA ---
+    doc.setFontSize(9);
+    doc.setFont("times", "italic");
+    doc.setTextColor(100, 100, 100);
+    doc.text("Propiedad exclusiva de la Diócesis de Oruro. Prohibida su alteración a estos datos oficiales.", 105, 285, { align: "center" });
+
+    doc.save(`Certificado_Bautismo_${datos.bautizado_completo.replace(/\s+/g, '_')}.pdf`);
   };
 
-  // Botón del Modal de Éxito
   const handleImprimirReciente = () => {
     if (datosImpresion) {
       generarPDF(datosImpresion);
@@ -172,36 +260,37 @@ export default function Bautizos({ onVolver }) {
     }
   };
 
-  // Botón de la Tabla (Reimprimir)
   const handleReimprimirTabla = (b) => {
     const datosAdaptados = {
-      bautizado: `${b.bautizado_apellido} ${b.bautizado_nombre}`,
-      padre: "Registrado en expediente", 
-      madre: "Registrado en expediente",
-      padrino: "Registrado en expediente",
-      madrina: "Registrado en expediente",
+      serie: "RE-" + b.id,
+      bautizado_completo: `${b.bautizado_apellido} ${b.bautizado_nombre}`,
+      bautizado_nombre: b.bautizado_nombre,
+      ciudad_nacimiento: b.ciudad_nacimiento || "Oruro", 
+      fecha_nacimiento: b.fecha_nacimiento || "2000-01-01", 
+      padre: "Registrado en libro", 
+      madre: "Registrado en libro",
+      padrino: "Registrado en libro",
+      madrina: "---",
       parroquia: b.parroquia_nombre || "",
       sacerdote: b.sacerdote_nombre || "",
-      fecha: b.fecha_bautizo,
+      fecha_bautizo: b.fecha_bautizo,
       libro: b.numero_libro,
       pagina: b.pagina_libro,
-      seccion: b.seccion_libro
+      seccion: b.seccion_libro,
+      obispo: "Mons. Krzysztof Bialasik"
     };
     generarPDF(datosAdaptados);
   };
-// 🛠️ NUEVA FUNCIÓN: Dibuja las opciones del select con formato e información
+
   const renderOpcionFeligres = (f, esPrincipal = false) => {
     if (f.ya_lo_tiene === 1) {
-      // Formateamos la fecha si existe
       const fechaFormat = f.fecha_sacramento ? new Date(f.fecha_sacramento).toLocaleDateString() : '';
       const texto = `🔴 [YA BAUTIZADO] ${f.nombre_completo} - ${f.parroquia_sacramento} (${fechaFormat})`;
-      
-      // Si es para el Bautizado principal, lo bloqueamos. Si es para Padre/Padrino, lo dejamos elegible.
       return <option key={f.id} value={f.id} disabled={esPrincipal}>{texto}</option>;
     }
-    // Si no está bautizado, sale en verde
     return <option key={f.id} value={f.id}>🟢 {f.nombre_completo} {f.documento_identidad ? `(CI: ${f.documento_identidad})` : ''}</option>;
   };
+
   return (
     <div className="bg-white p-6 rounded-xl shadow-xs border border-gray-200">
       
@@ -214,7 +303,7 @@ export default function Bautizos({ onVolver }) {
           <h2 className="text-2xl font-bold text-gray-900">Módulo de Bautizos</h2>
         </div>
         <button onClick={() => setMostrarModal(true)} className="px-4 py-2 bg-amber-600 text-white font-semibold rounded-lg text-sm hover:bg-amber-700 cursor-pointer">
-          + Registrar Nueva Acta
+          + Nuevo Registro
         </button>
       </div>
 
@@ -266,7 +355,7 @@ export default function Bautizos({ onVolver }) {
       {mostrarModal && (
         <div className="fixed top-0 left-0 w-full h-full bg-black/50 flex justify-center items-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full p-6 relative max-h-[90vh] overflow-y-auto">
-            <h3 className="text-xl font-bold text-gray-900 mb-4 border-b pb-2">Nueva Acta de Bautizo</h3>
+            <h3 className="text-xl font-bold text-gray-900 mb-4 border-b pb-2">Nuevo Registro de Bautizo</h3>
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
@@ -311,7 +400,6 @@ export default function Bautizos({ onVolver }) {
                 </div>
               </div>
 
-              {/* 🛠️ CORREGIDO: Reducido a grid-cols-2 porque quitamos la parroquia */}
               <div className="grid grid-cols-2 gap-4 border-t pt-4">
                 <div>
                   <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Fecha *</label>
