@@ -5,8 +5,8 @@ require('dotenv').config();
 // Pool de conexiones dinámico
 const db = mysql.createPool({
   host: process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER || 'root2',
-  password: process.env.DB_PASSWORD || '1234567890',
+  user: process.env.DB_USER || 'root',
+  password: process.env.DB_PASSWORD || '',
   database: process.env.DB_NAME || 'proyecto1',
   waitForConnections: true,
   connectionLimit: 10,
