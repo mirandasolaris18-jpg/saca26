@@ -1,25 +1,25 @@
 import React, { useState } from 'react';
 
-// --- IMPORTACIONES DE MÓDULOS YA CREADOS ---
+// --- IMPORTACIONES DE MÓDULOS ---
 import Feligreses from './Feligreses';   
 import Bautizos from './Bautizos';
 import Confirmaciones from './Confirmaciones'; 
-import Matrimonios from './Matrimonios'; 
+// Importamos AperturaExpediente que ahora gestionará TODO el flujo de matrimonios
+import AperturaExpediente from './AperturaExpediente';
 import Catequistas from './Catequistas';
 import Reportes from './Reportes'; 
-import AperturaExpediente from './AperturaExpediente';
-// (Agregaremos los demás aquí a medida que los programemos)
+// Rescatamos el componente huérfano
+import AsistenciaCatequesis from './AsistenciaCatequesis';
 
 export default function Dashboard({ user }) {
   const [vista, setVista] = useState('inicio'); 
-  const [menusAbiertos, setMenusAbiertos] = useState({}); // Controla qué submenús están desplegados
+  const [menusAbiertos, setMenusAbiertos] = useState({});
 
   const handleLogout = () => {
     localStorage.clear();
     window.location.reload(); 
   };
 
-  // Función para expandir/contraer los submenús
   const toggleMenu = (id) => {
     setMenusAbiertos(prev => ({ ...prev, [id]: !prev[id] }));
   };
@@ -34,17 +34,8 @@ export default function Dashboard({ user }) {
       hijos: [
         { id: 'bautizos', titulo: '2.1 Bautizos' },
         { id: 'confirmaciones', titulo: '2.2 Confirmaciones' },
-        {
-          id: 'menu_matrimonios', titulo: '2.3 Matrimonios',
-          hijos: [
-            { id: 'apertura_expediente', titulo: '2.3.1 Apertura de Expediente' },
-            { id: 'registro_intervinientes', titulo: '2.3.2 Registro de Intervinientes' },
-            { id: 'digitalizacion_documentos', titulo: '2.3.3 Digitalización de Documentos' },
-            { id: 'cursillo_prematrimonial', titulo: '2.3.4 Cursillo Prematrimonial' },
-            { id: 'edictos_matrimoniales', titulo: '2.3.5 Edictos Matrimoniales' },
-            { id: 'generacion_actas', titulo: '2.3.6 Actas y Celebración' }
-          ]
-        }
+        // FLUJO 1: Matrimonios simplificado. Sin submenús.
+        { id: 'apertura_expediente', titulo: '2.3 Matrimonios' }
       ]
     },
     {
@@ -169,7 +160,6 @@ export default function Dashboard({ user }) {
 
   const renderizarVista = () => {
     switch(vista) {
-      case 'apertura_expediente': return <AperturaExpediente onVolver={() => setVista('inicio')} />;
       case 'inicio': 
         return (
           <div className="bg-white p-8 rounded-xl shadow-sm border border-emerald-100 text-center animate-fade-in">
@@ -183,9 +173,19 @@ export default function Dashboard({ user }) {
       case 'feligreses': return <Feligreses onVolver={() => setVista('inicio')} />;
       case 'bautizos': return <Bautizos onVolver={() => setVista('inicio')} />;
       case 'confirmaciones': return <Confirmaciones onVolver={() => setVista('inicio')} />;
-      case 'matrimonios': return <Matrimonios onVolver={() => setVista('inicio')} />;
+      
+      // Conectamos el Expediente a Matrimonios y pasamos el usuario
+      case 'apertura_expediente': return <AperturaExpediente onVolver={() => setVista('inicio')} user={user} />;
+      
       case 'catequistas': return <Catequistas onVolver={() => setVista('inicio')} />;
       case 'reportes': return <Reportes onVolver={() => setVista('inicio')} />;
+      
+      // Conectamos Asistencia de Catequesis
+      case 'asistencia_ninos_comunion':
+      case 'asistencia_papas_comunion':
+      case 'asistencia_general_comunion':
+      case 'asistencia_general_conf':
+        return <AsistenciaCatequesis onVolver={() => setVista('inicio')} />;
       
       default:
         const tituloMenu = menuEstructura.flatMap(m => m.hijos ? [m, ...m.hijos.flatMap(h => h.hijos ? [h, ...h.hijos] : h)] : m).find(x => x.id === vista)?.titulo || vista;
