@@ -4,12 +4,12 @@ import React, { useState } from 'react';
 import Feligreses from './Feligreses';   
 import Bautizos from './Bautizos';
 import Confirmaciones from './Confirmaciones'; 
-// Importamos AperturaExpediente que ahora gestionará TODO el flujo de matrimonios
 import AperturaExpediente from './AperturaExpediente';
 import Catequistas from './Catequistas';
 import Reportes from './Reportes'; 
-// Rescatamos el componente huérfano
 import AsistenciaCatequesis from './AsistenciaCatequesis';
+// Importamos el nuevo componente de Reimpresiones
+import Reimpresiones from './Reimpresiones';
 
 export default function Dashboard({ user }) {
   const [vista, setVista] = useState('inicio'); 
@@ -34,7 +34,6 @@ export default function Dashboard({ user }) {
       hijos: [
         { id: 'bautizos', titulo: '2.1 Bautizos' },
         { id: 'confirmaciones', titulo: '2.2 Confirmaciones' },
-        // FLUJO 1: Matrimonios simplificado. Sin submenús.
         { id: 'apertura_expediente', titulo: '2.3 Matrimonios' }
       ]
     },
@@ -174,18 +173,30 @@ export default function Dashboard({ user }) {
       case 'bautizos': return <Bautizos onVolver={() => setVista('inicio')} />;
       case 'confirmaciones': return <Confirmaciones onVolver={() => setVista('inicio')} />;
       
-      // Conectamos el Expediente a Matrimonios y pasamos el usuario
+      // Matrimonios
       case 'apertura_expediente': return <AperturaExpediente onVolver={() => setVista('inicio')} user={user} />;
       
       case 'catequistas': return <Catequistas onVolver={() => setVista('inicio')} />;
       case 'reportes': return <Reportes onVolver={() => setVista('inicio')} />;
       
-      // Conectamos Asistencia de Catequesis
+      // Asistencia de Catequesis
       case 'asistencia_ninos_comunion':
       case 'asistencia_papas_comunion':
       case 'asistencia_general_comunion':
       case 'asistencia_general_conf':
         return <AsistenciaCatequesis onVolver={() => setVista('inicio')} />;
+
+      // ==========================================
+      // AQUI VAN LAS RUTAS DE REIMPRESIONES CORRECTAMENTE
+      // ==========================================
+      case 'reimpresion_bautizo': 
+        return <Reimpresiones tipo="bautizo" onVolver={() => setVista('inicio')} user={user} />;
+      case 'reimpresion_confirmacion': 
+        return <Reimpresiones tipo="confirmacion" onVolver={() => setVista('inicio')} user={user} />;
+      case 'reimpresion_matrimonio': 
+        return <Reimpresiones tipo="matrimonio" onVolver={() => setVista('inicio')} user={user} />;
+      case 'reimpresion_acta_matrimonio': 
+        return <Reimpresiones tipo="acta_matrimonio" onVolver={() => setVista('inicio')} user={user} />;
       
       default:
         const tituloMenu = menuEstructura.flatMap(m => m.hijos ? [m, ...m.hijos.flatMap(h => h.hijos ? [h, ...h.hijos] : h)] : m).find(x => x.id === vista)?.titulo || vista;

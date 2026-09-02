@@ -350,14 +350,16 @@ export default function Reimpresiones({ tipo, onVolver, user }) {
             </h2>
           </div>
         </div>
-
-        <input 
-          type="text" 
-          placeholder="🔍 Buscar por nombre o identificador..." 
-          className="w-full p-2 border border-gray-300 rounded-lg mb-4"
-          value={busqueda}
-          onChange={handleBuscar}
-        />
+<input 
+  type="text" 
+  placeholder="🔍 Buscar por nombre o identificador..." 
+  className="w-full p-2 border border-gray-300 rounded-lg mb-4"
+  value={busqueda}
+  onChange={(e) => {
+    setBusqueda(e.target.value);
+    cargarDatos(e.target.value);
+  }}
+/>
 
         <div className="overflow-x-auto rounded-lg border border-gray-200">
           <table className="w-full text-sm text-left border-collapse bg-white">
