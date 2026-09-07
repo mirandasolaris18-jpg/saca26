@@ -10,6 +10,7 @@ import Reportes from './Reportes';
 import AsistenciaCatequesis from './AsistenciaCatequesis';
 // Importamos el nuevo componente de Reimpresiones
 import Reimpresiones from './Reimpresiones';
+import DashboardGerencial from './DashboardGerencial';
 
 export default function Dashboard({ user }) {
   const [vista, setVista] = useState('inicio'); 
@@ -172,7 +173,9 @@ export default function Dashboard({ user }) {
       case 'feligreses': return <Feligreses onVolver={() => setVista('inicio')} />;
       case 'bautizos': return <Bautizos onVolver={() => setVista('inicio')} />;
       case 'confirmaciones': return <Confirmaciones onVolver={() => setVista('inicio')} />;
-      
+      case 'dashboard_gerencial': 
+  return <DashboardGerencial user={user} />;
+  
       // Matrimonios
       case 'apertura_expediente': return <AperturaExpediente onVolver={() => setVista('inicio')} user={user} />;
       
